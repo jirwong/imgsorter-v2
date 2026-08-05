@@ -1,0 +1,28 @@
+# Prettier ignore file (gitignore-style patterns)
+# Place this at the project root so Prettier skips these paths
+
+node_modules/
+dist/
+build/
+coverage/
+.next/
+public/
+.vscode/
+
+# Generated or vendor files
+*.min.js
+*.bundle.js
+src/generated/**
+
+# Logs, lockfiles
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+package-lock.json
+
+# MacOS files
+.DS_Store
+
+# Allow explicitly keeping this ignore file if needed
+!.prettierignore
