@@ -120,7 +120,9 @@ describe('loadRunConfiguration', () => {
 
     await writeConfig(yamlContent);
 
-    await expect(loadRunConfiguration('config.yaml')).rejects.toThrow('config.yaml: dbName must be a string');
+    await expect(loadRunConfiguration('config.yaml')).rejects.toThrow(
+      'config.yaml: dbName Invalid input: expected string, received number',
+    );
   });
 
   it('throws if directories is not an array of strings', async () => {
@@ -138,7 +140,7 @@ describe('loadRunConfiguration', () => {
     await writeConfig(yamlContent);
 
     await expect(loadRunConfiguration('config.yaml')).rejects.toThrow(
-      'config.yaml: directories must be an array of strings',
+      'config.yaml: directories Invalid input: expected array, received string',
     );
   });
 
@@ -158,7 +160,7 @@ describe('loadRunConfiguration', () => {
     await writeConfig(yamlContent);
 
     await expect(loadRunConfiguration('config.yaml')).rejects.toThrow(
-      'config.yaml: ignore_directories must be an array of strings',
+      'config.yaml: ignore_directories Invalid input: expected array, received string',
     );
   });
 
@@ -177,9 +179,7 @@ describe('loadRunConfiguration', () => {
 
     await writeConfig(yamlContent);
 
-    await expect(loadRunConfiguration('config.yaml')).rejects.toThrow(
-      'config.yaml: extensions must be a string or an array of strings',
-    );
+    await expect(loadRunConfiguration('config.yaml')).rejects.toThrow('config.yaml: extensions Invalid input');
   });
 
   it.each([
@@ -204,12 +204,16 @@ describe('loadRunConfiguration', () => {
 
     await writeConfig(yamlContent);
 
-    await expect(loadRunConfiguration('config.yaml')).rejects.toThrow(`config.yaml: ${name} must be a boolean`);
+    await expect(loadRunConfiguration('config.yaml')).rejects.toThrow(
+      `config.yaml: ${name} Invalid input: expected boolean`,
+    );
   });
 
   it('throws when the YAML root is not an object', async () => {
     await writeConfig('just a string');
 
-    await expect(loadRunConfiguration('config.yaml')).rejects.toThrow('config.yaml: root must be an object');
+    await expect(loadRunConfiguration('config.yaml')).rejects.toThrow(
+      'config.yaml: (root) Invalid input: expected object',
+    );
   });
 });
