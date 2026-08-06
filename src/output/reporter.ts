@@ -25,26 +25,32 @@ export class CliReporter implements Reporter {
 
   debug(msg: string): void {
     if (this.options.verbose && !this.options.quiet) {
+      this.stopProgress();
       console.log(`[debug] ${msg}`);
     }
   }
 
   info(msg: string): void {
     if (!this.options.quiet) {
+      this.stopProgress();
       console.log(msg);
     }
   }
 
   warn(msg: string): void {
+    this.stopProgress();
     console.warn(msg);
   }
 
   error(msg: string): void {
+    this.stopProgress();
     console.error(msg);
   }
 
+  // Quiet mode means "warnings and errors only", so it suppresses the spinner
+  // as well; `--no-progress` disables it for piped output.
   progress(msg: string): void {
-    if (!this.options.progress) {
+    if (!this.options.progress || this.options.quiet) {
       return;
     }
     if (this.spinner === null) {
@@ -63,16 +69,24 @@ export class CliReporter implements Reporter {
 
   printSummary(summary: RunSummary): void {
     for (const phase of summary.phases) {
-      if (phase.name === 'scan') {
-        this.info(
-          `Scan: ${summary.filesScanned} files scanned, ${summary.entriesUpserted} entries upserted (${phase.elapsedMs} ms)`,
-        );
-      } else if (phase.name === 'resync') {
-        this.info(`Resync: ${summary.staleRemoved} stale entries removed (${phase.elapsedMs} ms)`);
-      } else {
-        this.info(
-          `Records: ${summary.duplicateGroups} duplicate group${summary.duplicateGroups === 1 ? '' : 's'}, ${summary.duplicateFiles} duplicate file${summary.duplicateFiles === 1 ? '' : 's'} (${phase.elapsedMs} ms)`,
-        );
+      switch (phase.name) {
+        case 'scan':
+          this.info(
+            `Scan: ${summary.filesScanned} files scanned, ${summary.entriesUpserted} entries upserted (${phase.elapsedMs} ms)`,
+          );
+          break;
+        case 'resync':
+          this.info(`Resync: ${summary.staleRemoved} stale entries removed (${phase.elapsedMs} ms)`);
+          break;
+        case 'records':
+          this.info(
+            `Records: ${summary.duplicateGroups} duplicate group${summary.duplicateGroups === 1 ? '' : 's'}, ${summary.duplicateFiles} duplicate file${summary.duplicateFiles === 1 ? '' : 's'} (${phase.elapsedMs} ms)`,
+          );
+          break;
+        default: {
+          const exhaustiveCheck: never = phase.name;
+          throw new Error(`Unhandled phase: ${exhaustiveCheck}`);
+        }
       }
     }
     if (summary.errors.length > 0) {

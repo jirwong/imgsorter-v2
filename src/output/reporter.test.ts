@@ -81,6 +81,38 @@ describe('CliReporter', () => {
     expect(createSpinner).not.toHaveBeenCalled();
   });
 
+  it('suppresses the spinner in quiet mode even when progress is enabled', () => {
+    const reporter = new CliReporter({ quiet: true, verbose: false, progress: true });
+    reporter.progress('working');
+    reporter.stopProgress();
+    expect(createSpinner).not.toHaveBeenCalled();
+  });
+
+  it('stops an active spinner before printing a warn or error line', () => {
+    const reporter = new CliReporter({ quiet: false, verbose: false, progress: true });
+    reporter.progress('working');
+    reporter.warn('careful');
+    reporter.error('broken');
+
+    const spinner = vi.mocked(createSpinner).mock.results[0].value as unknown as { stop: Mock };
+    expect(spinner.stop).toHaveBeenCalledOnce();
+    expect(spinner.stop).toHaveBeenCalledBefore(consoleWarn as unknown as Mock);
+    expect(consoleWarn).toHaveBeenCalledWith('careful');
+    expect(consoleError).toHaveBeenCalledWith('broken');
+  });
+
+  it('stops an active spinner before printing an info line and restarts it on the next progress call', () => {
+    const reporter = new CliReporter({ quiet: false, verbose: false, progress: true });
+    reporter.progress('phase 1');
+    reporter.info('[1/3] Scanning…');
+    reporter.progress('phase 2');
+
+    const spinner = vi.mocked(createSpinner).mock.results[0].value as unknown as { stop: Mock };
+    expect(spinner.stop).toHaveBeenCalledOnce();
+    expect(consoleLog).toHaveBeenCalledWith('[1/3] Scanning…');
+    expect(createSpinner).toHaveBeenCalledTimes(2);
+  });
+
   it('drives the spinner when progress is enabled', () => {
     const reporter = new CliReporter({ quiet: false, verbose: false, progress: true });
     reporter.progress('starting');
