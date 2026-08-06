@@ -10,4 +10,7 @@ import { loadRunConfiguration } from './utilities/load-config';
   } finally {
     runner.close();
   }
-})();
+})().catch((err) => {
+  console.error('Run failed:', err);
+  process.exitCode = 1;
+});

@@ -2,6 +2,12 @@ import { DbService } from './services/db-service';
 import { fileService } from './services/file-service';
 import type { RunConfiguration } from './types/configuration';
 
+// Normalize paths for comparison: trim trailing separators and ignore case
+// (filesystems on Windows are case-insensitive).
+function normalizePath(path: string): string {
+  return path.replace(/[\\/]+$/, '').toLowerCase();
+}
+
 export class Runner {
   private db: DbService;
   private config: RunConfiguration;
@@ -38,8 +44,10 @@ export class Runner {
 
     console.log('Processing directories:', directories);
 
+    const ignored = new Set(ignore_directories.map(normalizePath));
+
     for (const directory of directories) {
-      if (ignore_directories.includes(directory)) {
+      if (ignored.has(normalizePath(directory))) {
         console.log(`Ignoring directory: ${directory}`);
         continue;
       }
@@ -59,8 +67,10 @@ export class Runner {
 
     console.log('Resyncing directories:', directories);
 
+    const ignored = new Set(ignore_directories.map(normalizePath));
+
     for (const directory of directories) {
-      if (ignore_directories.includes(directory)) {
+      if (ignored.has(normalizePath(directory))) {
         console.log(`Ignoring directory: ${directory}`);
         continue;
       }
@@ -79,11 +89,11 @@ export class Runner {
         }
       } else {
         console.log('Checking file entries against current directory listing...');
-        const files = await fileService.listFilePathsRecursive(directory);
+        const files = await fileService.listFilePathsRecursive(directory, ignore_directories);
+        const currentPaths = new Set(files.map(normalizePath));
         for (const entry of entries) {
           console.log(`Verifying file entry: ${entry.path}`);
-          const found = files.find((file) => file === entry.path);
-          if (!found) {
+          if (!currentPaths.has(normalizePath(entry.path))) {
             this.db.deleteFileEntryByPath(entry.path);
             console.log(`Deleted missing file entry: ${entry.path}`);
           }

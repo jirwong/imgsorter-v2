@@ -119,6 +119,10 @@ export class DbService {
   }
 
   updateFileRecords() {
+    // Rebuild from scratch so records whose (filename, hash) no longer exists in
+    // entries (e.g. after a resync removed the underlying files) are dropped.
+    this.db.prepare('DELETE FROM records').run();
+
     const dedupSql = `select hash,
               filename,
               size,

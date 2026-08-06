@@ -111,7 +111,11 @@ export const fileService = {
           }
         }
       } catch (ex) {
-        console.error('ERROR', ex);
+        if (dir === rootDir) {
+          console.warn(`WARNING: could not read scan directory '${rootDir}':`, ex);
+        } else {
+          console.error('ERROR', ex);
+        }
       }
     }
 
@@ -121,12 +125,10 @@ export const fileService = {
   },
 
   // Recursively list all file paths under a directory without reading file metadata
-  async listFilePathsRecursive(rootDir: string): Promise<string[]> {
+  async listFilePathsRecursive(rootDir: string, ignoreDirectories?: string[]): Promise<string[]> {
     const result: string[] = [];
 
     async function walk(dir: string): Promise<void> {
-      console.log('Walking directory: ', dir);
-
       try {
         const entries = await fs.readdir(dir, { withFileTypes: true });
 
@@ -134,6 +136,10 @@ export const fileService = {
           const fullPath = join(dir, entry.name);
 
           if (entry.isDirectory()) {
+            if (ignoreDirectories && ignoreDirectories.includes(fullPath)) {
+              console.log(`Ignoring directory during file listing: ${fullPath}`);
+              continue;
+            }
             await walk(fullPath);
           } else if (entry.isFile()) {
             result.push(fullPath);
