@@ -7,15 +7,9 @@ settings:
 importers:
   .:
     dependencies:
-      '@t3-oss/env-core':
-        specifier: ^0.13.11
-        version: 0.13.11(typescript@7.0.2)(zod@4.4.3)
       better-sqlite3:
         specifier: ^12.11.1
         version: 12.11.1
-      dotenv:
-        specifier: ^17.4.2
-        version: 17.4.2
       yaml:
         specifier: ^2.9.0
         version: 2.9.0
@@ -769,24 +763,6 @@ packages:
     resolution:
       { integrity: sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w== }
 
-  '@t3-oss/env-core@0.13.11':
-    resolution:
-      { integrity: sha512-sM7GYY+KL7H/Hl0BE0inWfk3nRHZOLhmVn7sHGxaZt9FAR6KqREXAE+6TqKfiavfXmpRxO/OZ2QgKRd+oiBYRQ== }
-    peerDependencies:
-      arktype: ^2.1.0
-      typescript: '>=5.0.0'
-      valibot: ^1.0.0-beta.7 || ^1.0.0
-      zod: ^3.24.0 || ^4.0.0
-    peerDependenciesMeta:
-      arktype:
-        optional: true
-      typescript:
-        optional: true
-      valibot:
-        optional: true
-      zod:
-        optional: true
-
   '@types/better-sqlite3@7.6.13':
     resolution:
       { integrity: sha512-NMv9ASNARoKksWtsq/SHakpYAYnhBrQgGD8zkLYk/jaK8jUGn08CfEdTRgYhMypUQAfzSP8W6gNLe0q19/t4VA== }
@@ -1050,11 +1026,6 @@ packages:
     resolution:
       { integrity: sha512-Btj2BOOO83o3WyH59e8MgXsxEQVcarkUOpEYrubB0urwnN10yQ364rsiByU11nZlqWYZm05i/of7io4mzihBtQ== }
     engines: { node: '>=8' }
-
-  dotenv@17.4.2:
-    resolution:
-      { integrity: sha512-nI4U3TottKAcAD9LLud4Cb7b2QztQMUEfHbvhTH09bqXTxnSie8WnjPALV/WMCrJZ6UV/qHJ6L03OqO3LcdYZw== }
-    engines: { node: '>=12' }
 
   end-of-stream@1.4.5:
     resolution:
@@ -1868,11 +1839,6 @@ snapshots:
 
   '@standard-schema/spec@1.1.0': {}
 
-  '@t3-oss/env-core@0.13.11(typescript@7.0.2)(zod@4.4.3)':
-    optionalDependencies:
-      typescript: 7.0.2
-      zod: 4.4.3
-
   '@types/better-sqlite3@7.6.13':
     dependencies:
       '@types/node': 24.13.3
@@ -2048,8 +2014,6 @@ snapshots:
   deep-extend@0.6.0: {}
 
   detect-libc@2.1.2: {}
-
-  dotenv@17.4.2: {}
 
   end-of-stream@1.4.5:
     dependencies:

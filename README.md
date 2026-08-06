@@ -1,51 +1,86 @@
-# Basic TypeScript Template
+# imgsorter-v2
 
-[![CI](https://github.com/jirwong/basic-typescript-template/actions/workflows/ci.yml/badge.svg)](https://github.com/jirwong/basic-typescript-template/actions/workflows/ci.yml)
+[![CI](https://github.com/jirwong/imgsorter-v2/actions/workflows/ci.yml/badge.svg)](https://github.com/jirwong/imgsorter-v2/actions/workflows/ci.yml)
 
-A minimal, opinionated TypeScript template for Node.js projects. Includes modern tooling for development, testing, and code quality.
+A TypeScript/Node.js utility for indexing local files and detecting duplicates across directories. Built on a modern TypeScript stack and structured so the core `Runner` can be used programmatically (e.g. from an Electron app) or as a CLI.
 
-## Quick Start
+## What it does
+
+`imgsorter-v2` walks configured directories, collects metadata (filename, size, extension, birthtime, and a fast edge-based SHA-256 hash) for each file, and stores the data in a local SQLite database. It can then resync the database against the filesystem and update a summary `records` table that groups files by filename, size, and hash — making it easy to spot duplicates and see which directories contain the same file.
+
+## Features
+
+- Recursive directory scanning with configurable file extensions
+- Fast edge hashing: hashes the first and last 16 KB of each file instead of the whole file
+- SQLite storage with `entries` (per-file metadata) and `records` (duplicate grouping) tables
+- Resync mode to remove stale database entries when files have been deleted or moved
+- Case-insensitive extension filtering
+- Ignore-directory support (config paths are normalized for Windows-style case/trailing-separator differences)
+- Zod-validated YAML configuration
+- `Runner` exported as a class for library/Electron usage
+- Vitest test coverage for core services
+
+## Getting started
 
 ### Prerequisites
 
 - **Node.js 24.12.0** (managed by `.node-version` and `.nvmrc`)
 - **pnpm 11.20.0** (see `packageManager` in `package.json`)
 
-### Setup
+### Install
 
 ```bash
-# Install dependencies
 pnpm install
-
-# This automatically installs git hooks via Lefthook
 ```
 
-### Development
+### Configure
+
+Edit `config.yaml` to set your database name, file extensions, and directories to scan:
+
+```yaml
+# SQLite database filename (created if it does not exist)
+dbName: local.db
+
+# File extensions to index. Can be a comma-separated string or an array of strings.
+extensions: jpg,png,gif,jpeg,mp4,mov
+
+# Whether to scan and index the configured directories.
+process_directories: true
+
+# Whether to rebuild the duplicate summary `records` table from the `entries` table.
+update_records: true
+
+# Whether to remove stale entries from the database when files have been deleted or moved.
+resync_directories: false
+
+# When resync_directories is true, this controls how stale entries are detected.
+# true  = verify each database entry by checking the filesystem directly.
+# false = compare database entries against the current directory listing.
+resync_check_actual_file: false
+
+# Directories to scan recursively.
+directories:
+  - C:\Users\YourName\Pictures
+
+# Directories to skip during scanning. These paths and their contents are ignored.
+ignore_directories:
+  - C:\Users\YourName\Pictures\Luminar Neo Catalog
+```
+
+### Run
 
 ```bash
-# Build and run once
-pnpm dev
-
-# Watch mode - rebuild and rerun on changes
-pnpm dev:watch
-
-# Type-check without building
-pnpm typecheck
-
-# Run tests
-pnpm test
-
-# Watch mode for tests
-pnpm test:watch
+# Run the CLI (reads config.yaml from the current directory)
+pnpm start
 ```
 
 ## Available Commands
 
 | Command              | Purpose                                     |
 | -------------------- | ------------------------------------------- |
-| `pnpm dev`           | Run the TypeScript entry point with tsx     |
+| `pnpm dev`           | Run the CLI entry point with tsx            |
 | `pnpm dev:watch`     | Watch src and re-run on changes             |
-| `pnpm build`         | Compile TypeScript to JavaScript in `dist/` |
+| `pnpm build`         | Bundle `src/index.ts` to `dist/index.js`    |
 | `pnpm typecheck`     | Type-check without emitting code            |
 | `pnpm lint`          | Run oxlint on src directory                 |
 | `pnpm lint:fix`      | Run oxlint with auto-fix                    |
@@ -60,108 +95,69 @@ pnpm test:watch
 
 ```
 .
-├── src/                    # TypeScript source files
-├── dist/                   # Compiled JavaScript (generated)
-├── .node-version          # Node version for nodenv
-├── .nvmrc                 # Node version for NVM
-├── tsconfig.json          # TypeScript configuration
-├── package.json           # Dependencies and scripts
-├── prettier.config.mjs    # Prettier configuration
-├── vitest.config.ts       # Vitest configuration
-├── .oxlintrc.json         # oxlint configuration
-├── .editorconfig          # Editor-agnostic settings
-├── lefthook.yml           # Git hooks configuration
-├── .gitattributes         # Line-ending normalization (LF)
-├── .github/               # CI, Dependabot, and issue/PR templates
-└── README.md              # This file
+├── src/                        # TypeScript source files
+│   ├── index.ts                # CLI entry point
+│   ├── runner.ts               # Runner orchestration class (also usable as a library)
+│   ├── services/
+│   │   ├── db-service.ts       # SQLite database operations
+│   │   └── file-service.ts     # File listing, metadata, and hashing
+│   ├── types/
+│   │   ├── configuration.ts    # RunConfiguration type
+│   │   └── file-types.ts       # FileEntry and FileRecord types
+│   └── utilities/
+│       └── load-config.ts      # Zod-validated YAML config loader
+├── config.yaml                 # User configuration
+├── dist/                       # Compiled output (generated by pnpm build)
+├── tsconfig.json               # TypeScript config (strict, ES2023, NodeNext)
+├── vitest.config.ts            # Vitest config (coverage thresholds)
+├── package.json                # Dependencies and scripts
+├── pnpm-workspace.yaml         # pnpm workspace & settings
+└── .github/                    # CI and issue/PR templates
 ```
 
-## Technology Stack
+## Configuration Options
 
-### Core
+| Option                     | Type               | Description                                                                                                |
+| -------------------------- | ------------------ | ---------------------------------------------------------------------------------------------------------- |
+| `dbName`                   | string             | SQLite database filename                                                                                   |
+| `extensions`               | string or string[] | File extensions to index (e.g. `jpg,png` or `[.jpg, .png]`)                                                |
+| `directories`              | string[]           | Directories to scan recursively                                                                            |
+| `ignore_directories`       | string[]           | Directories to skip during scanning                                                                        |
+| `process_directories`      | boolean            | Whether to scan and index directories                                                                      |
+| `update_records`           | boolean            | Whether to rebuild the duplicate summary `records` table                                                   |
+| `resync_directories`       | boolean            | Whether to remove stale entries from the database                                                          |
+| `resync_check_actual_file` | boolean            | If true, verify each entry against the filesystem; otherwise compare against the current directory listing |
 
-- **TypeScript 7.0.2** - Type-safe JavaScript with strict mode
-- **esbuild 0.28.1** - Fast bundler and compiler
-- **Node.js 24.12.0** - JavaScript runtime
+All fields are required and validated with a zod schema; invalid types produce descriptive errors at startup.
 
-### Development & Quality
+## How hashing works
 
-- **Vitest 4.1.10** - Fast unit testing
-- **oxlint 1.77.0** - Fast Rust-based linter
-- **Prettier 3.9.6** - Code formatting
-- **Lefthook 2.1.10** - Git hooks for automated checks
-- **tsx 4.23.7** - Development auto-reload
+The utility computes a SHA-256 hash of the first 16 KB and the last 16 KB of each file. This is fast for large media files while still producing different hashes for most files with different content. Very small files (smaller than 32 KB) are handled without double-reading overlapping regions.
 
-### Runtime Dependencies
+## Using the Runner as a library
 
-- **@t3-oss/env-core** - Type-safe environment variables
-- **dotenv** - Load `.env` files
-- **Zod** - TypeScript-first schema validation
+`Runner` is exported from `src/runner.ts` and can be driven programmatically:
 
-## Code Quality
+```ts
+import { Runner } from './runner';
+import { loadRunConfiguration } from './utilities/load-config';
 
-### Pre-commit Hooks
-
-Git hooks are automatically installed when you run `pnpm install`:
-
-- Runs oxlint on staged TypeScript files
-- Formats code with Prettier
-- Ensures code quality before commits
-
-### Linting
-
-```bash
-# Check for issues
-pnpm lint
-
-# Auto-fix issues
-pnpm lint:fix
+const config = await loadRunConfiguration('config.yaml');
+const runner = new Runner(config);
+try {
+  await runner.run();
+} finally {
+  runner.close();
+}
 ```
 
-### Type Safety
-
-TypeScript strict mode is enabled. All files must have proper type annotations.
+## Testing
 
 ```bash
-# Verify type safety
-pnpm typecheck
-```
-
-### Testing
-
-Unit tests use Vitest:
-
-```bash
-# Run all tests once
 pnpm test
-
-# Watch mode for development
-pnpm test:watch
 ```
 
-## Environment Variables
-
-The project is configured for type-safe environment variables using `@t3-oss/env-core`:
-
-1. Create a `.env` file in the project root
-2. Define your environment variables
-3. Use `dotenv` to load them
-4. Access via validated schema
-
-Example `.env`:
-
-```
-NODE_ENV=development
-```
-
-## Building for Production
-
-```bash
-# Compile TypeScript to JavaScript
-pnpm build
-
-# Output is in dist/index.js
-```
+Tests cover database CRUD operations, file hashing, recursive directory listing, YAML configuration loading, and end-to-end Runner orchestration (indexing, record grouping, resync, ignore-directory handling). Coverage thresholds are enforced by `pnpm test:coverage`.
 
 ## License
 
