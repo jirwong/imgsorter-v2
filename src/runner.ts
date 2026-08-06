@@ -1,19 +1,22 @@
 import { DbService } from './services/db-service';
 import { fileExists, listFilePathsRecursive, listFilesRecursive } from './services/file-service';
+import type { Reporter } from './output/reporter';
 import type { RunConfiguration } from './types/configuration';
+import type { RunSummary } from './types/run-summary';
+import { buildIgnoredSet, isIgnored, normalizePath } from './utilities/path-helpers';
 
-// Normalize paths for comparison: trim trailing separators and ignore case
-// (filesystems on Windows are case-insensitive).
-function normalizePath(path: string): string {
-  return path.replace(/[\\/]+$/, '').toLowerCase();
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }
 
 export class Runner {
   private db: DbService;
   private config: RunConfiguration;
+  private reporter: Reporter;
 
-  constructor(config: RunConfiguration) {
+  constructor(config: RunConfiguration, reporter: Reporter) {
     this.config = config;
+    this.reporter = reporter;
     this.db = new DbService(config.dbName);
   }
 
@@ -21,97 +24,142 @@ export class Runner {
     this.db.close();
   }
 
-  async run(): Promise<void> {
-    console.log('Starting run...');
+  async run(): Promise<RunSummary> {
+    const phases: RunSummary['phases'] = [];
+    const errors: string[] = [];
+    let filesScanned = 0;
+    let entriesUpserted = 0;
+    let duplicateGroups = 0;
+    let duplicateFiles = 0;
+    let staleRemoved = 0;
 
     if (this.config.process_directories) {
-      await this.processDirectories();
+      const result = await this.processDirectories(errors);
+      phases.push({ name: 'scan', elapsedMs: result.elapsedMs });
+      filesScanned = result.filesScanned;
+      entriesUpserted = result.entriesUpserted;
     }
 
     if (this.config.resync_directories) {
-      await this.resyncDirectories(this.config.resync_check_actual_file);
+      const result = await this.resyncDirectories(this.config.resync_check_actual_file, errors);
+      phases.push({ name: 'resync', elapsedMs: result.elapsedMs });
+      staleRemoved = result.staleRemoved;
     }
 
     if (this.config.update_records) {
-      this.updateRecords();
+      const result = this.updateRecords();
+      phases.push({ name: 'records', elapsedMs: result.elapsedMs });
+      duplicateGroups = result.duplicateGroups;
+      duplicateFiles = result.duplicateFiles;
     }
 
-    console.log('Run completed.');
+    return { phases, filesScanned, entriesUpserted, duplicateGroups, duplicateFiles, staleRemoved, errors };
   }
 
-  private async processDirectories(): Promise<void> {
+  private async processDirectories(
+    errors: string[],
+  ): Promise<{ elapsedMs: number; filesScanned: number; entriesUpserted: number }> {
     const { directories, extensions, ignore_directories } = this.config;
+    const ignored = buildIgnoredSet(ignore_directories);
+    const start = performance.now();
 
-    console.log('Processing directories:', directories);
+    this.reporter.info('[1/3] Scanning…');
+    this.reporter.progress('[1/3] Scanning…');
 
-    const ignored = new Set(ignore_directories.map(normalizePath));
+    let filesScanned = 0;
+    let entriesUpserted = 0;
 
     for (const directory of directories) {
-      if (ignored.has(normalizePath(directory))) {
-        console.log(`Ignoring directory: ${directory}`);
+      if (isIgnored(directory, ignored)) {
+        this.reporter.info(`Ignoring directory: ${directory}`);
         continue;
       }
+
+      this.reporter.progress(`Scanning ${directory}`);
 
       try {
         const files = await listFilesRecursive(directory, extensions, true, ignore_directories);
-
+        filesScanned += files.length;
         for (const file of files) {
-          this.db.insertFileInfo(file);
+          const status = this.db.insertFileInfo(file);
+          this.reporter.debug(`Upserted (${status}) ${file.path}`);
+          entriesUpserted += 1;
         }
       } catch (err) {
-        console.warn(`Failed to scan directory: ${directory} (${err instanceof Error ? err.message : String(err)})`);
+        errors.push(`Scan ${directory}: ${errorMessage(err)}`);
+        this.reporter.warn(`Failed to scan directory: ${directory} (${errorMessage(err)})`);
       }
     }
 
-    console.log('Processed all directories.');
+    return { elapsedMs: Math.round(performance.now() - start), filesScanned, entriesUpserted };
   }
 
-  private async resyncDirectories(checkActualFile: boolean = false): Promise<void> {
+  private async resyncDirectories(
+    checkActualFile: boolean,
+    errors: string[],
+  ): Promise<{ elapsedMs: number; staleRemoved: number }> {
     const { directories, ignore_directories } = this.config;
+    const ignored = buildIgnoredSet(ignore_directories);
+    const start = performance.now();
 
-    console.log('Resyncing directories:', directories);
+    this.reporter.info('[2/3] Resyncing…');
+    this.reporter.progress('[2/3] Resyncing…');
 
-    const ignored = new Set(ignore_directories.map(normalizePath));
+    let staleRemoved = 0;
 
     for (const directory of directories) {
-      if (ignored.has(normalizePath(directory))) {
-        console.log(`Ignoring directory: ${directory}`);
+      if (isIgnored(directory, ignored)) {
+        this.reporter.info(`Ignoring directory: ${directory}`);
         continue;
       }
+
+      this.reporter.progress(`Resyncing ${directory}`);
 
       try {
         const entries = this.db.getFileEntriesByDirectory(directory);
 
         if (checkActualFile) {
-          console.log('Checking actual file existence for entries...');
           for (const entry of entries) {
-            console.log(`Checking file existence: ${entry.path}`);
+            this.reporter.debug(`Checking file existence: ${entry.path}`);
             const exists = await fileExists(entry.path);
             if (!exists) {
               this.db.deleteFileEntryByPath(entry.path);
-              console.log(`Deleted missing file entry: ${entry.path}`);
+              staleRemoved += 1;
             }
           }
         } else {
-          console.log('Checking file entries against current directory listing...');
           const files = await listFilePathsRecursive(directory, ignore_directories);
           const currentPaths = new Set(files.map(normalizePath));
           for (const entry of entries) {
-            console.log(`Verifying file entry: ${entry.path}`);
+            this.reporter.debug(`Verifying file entry: ${entry.path}`);
             if (!currentPaths.has(normalizePath(entry.path))) {
               this.db.deleteFileEntryByPath(entry.path);
-              console.log(`Deleted missing file entry: ${entry.path}`);
+              staleRemoved += 1;
             }
           }
         }
       } catch (err) {
-        console.warn(`Failed to resync directory: ${directory} (${err instanceof Error ? err.message : String(err)})`);
+        errors.push(`Resync ${directory}: ${errorMessage(err)}`);
+        this.reporter.warn(`Failed to resync directory: ${directory} (${errorMessage(err)})`);
       }
     }
+
+    return { elapsedMs: Math.round(performance.now() - start), staleRemoved };
   }
 
-  private updateRecords() {
-    console.log('Updating database record...');
+  private updateRecords(): { elapsedMs: number; duplicateGroups: number; duplicateFiles: number } {
+    const start = performance.now();
+
+    this.reporter.info('[3/3] Rebuilding records…');
+    this.reporter.progress('[3/3] Rebuilding records…');
+
     this.db.updateFileRecords();
+    const stats = this.db.getDuplicateStats();
+
+    return {
+      elapsedMs: Math.round(performance.now() - start),
+      duplicateGroups: stats.duplicateGroups,
+      duplicateFiles: stats.duplicateFiles,
+    };
   }
 }
