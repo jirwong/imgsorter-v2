@@ -1,5 +1,6 @@
 import { DbService } from './services/db-service';
 import { fileExists, listFilePathsRecursive, listFilesRecursive } from './services/file-service';
+import { relative } from 'node:path';
 import type { Reporter } from './output/reporter';
 import type { RunConfiguration } from './types/configuration';
 import type { FileEntry } from './types/file-types';
@@ -104,7 +105,9 @@ export class Runner {
 
       let files: FileEntry[];
       try {
-        files = await listFilesRecursive(directory, extensions, true, ignore_directories);
+        files = await listFilesRecursive(directory, extensions, true, ignore_directories, (filePath) => {
+          this.reporter.progress(`Scanning ${directory} → ${relative(directory, filePath)}`);
+        });
       } catch (err) {
         errors.push(`Scan ${directory}: ${errorMessage(err)}`);
         this.reporter.warn(`Failed to scan directory: ${directory} (${errorMessage(err)})`);
@@ -150,6 +153,7 @@ export class Runner {
 
       if (checkActualFile) {
         for (const entry of entries) {
+          this.reporter.progress(`Resyncing ${directory} → ${relative(directory, entry.path)}`);
           this.reporter.debug(`Checking file existence: ${entry.path}`);
           const exists = await fileExists(entry.path);
           if (!exists) {
@@ -169,6 +173,7 @@ export class Runner {
 
         const currentPaths = new Set(files.map(normalizePath));
         for (const entry of entries) {
+          this.reporter.progress(`Resyncing ${directory} → ${relative(directory, entry.path)}`);
           this.reporter.debug(`Verifying file entry: ${entry.path}`);
           if (!currentPaths.has(normalizePath(entry.path))) {
             this.db.deleteFileEntryByPath(entry.path);
