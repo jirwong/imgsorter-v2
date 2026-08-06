@@ -1,6 +1,6 @@
+import { relative } from 'node:path';
 import { DbService } from './services/db-service';
 import { fileExists, listFilePathsRecursive, listFilesRecursive } from './services/file-service';
-import { relative } from 'node:path';
 import type { Reporter } from './output/reporter';
 import type { RunConfiguration } from './types/configuration';
 import type { FileEntry } from './types/file-types';
@@ -164,7 +164,9 @@ export class Runner {
       } else {
         let files: string[];
         try {
-          files = await listFilePathsRecursive(directory, ignore_directories);
+          files = await listFilePathsRecursive(directory, ignore_directories, (filePath) => {
+            this.reporter.progress(`Resyncing ${directory} → ${relative(directory, filePath)}`);
+          });
         } catch (err) {
           errors.push(`Resync ${directory}: ${errorMessage(err)}`);
           this.reporter.warn(`Failed to resync directory: ${directory} (${errorMessage(err)})`);

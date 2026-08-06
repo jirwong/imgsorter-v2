@@ -52,7 +52,7 @@ Inside the walk's `isFile()` branch, call `onFile?.(fullPath)` immediately befor
 }
 ```
 
-The parameter is optional; existing callers and tests are unaffected. `listFilePathsRecursive` is unchanged (resync listing is fast and not per-file).
+The parameter is optional; existing callers and tests are unaffected. `listFilePathsRecursive` also gains the same optional trailing `onFile?: (filePath: string) => void` parameter, fired once per file encountered (before pushing the path), so the resync directory-listing mode can report progress during the listing too.
 
 ## 2. Runner scan phase
 
@@ -85,6 +85,14 @@ for (const entry of entries) {
 - `checkActualFile=false` (comparing against the current directory listing):
 
 ```ts
+files = await listFilePathsRecursive(directory, ignore_directories, (filePath) => {
+  this.reporter.progress(`Resyncing ${directory} → ${relative(directory, filePath)}`);
+});
+```
+
+then, per DB entry during the comparison:
+
+```ts
 for (const entry of entries) {
   this.reporter.progress(`Resyncing ${directory} → ${relative(directory, entry.path)}`);
   this.reporter.debug(`Verifying file entry: ${entry.path}`);
@@ -92,7 +100,7 @@ for (const entry of entries) {
 }
 ```
 
-The relative path is computed from the entry's stored absolute path.
+The relative path is computed from the entry's stored absolute path (or the walked file path for the listing callback).
 
 ## 4. Display behavior
 
