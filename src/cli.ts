@@ -9,6 +9,10 @@ function errorMessage(err: unknown): string {
 }
 
 export async function main(argv: string[]): Promise<number> {
+  // pnpm run forwards the `--` separator literally (e.g. `pnpm start -- --config x`),
+  // so drop a single leading separator before commander sees it.
+  const args = argv[0] === '--' ? argv.slice(1) : argv;
+
   const program = new Command();
   program
     .name('imgsorter')
@@ -21,7 +25,7 @@ export async function main(argv: string[]): Promise<number> {
   program.exitOverride();
 
   try {
-    program.parse(argv, { from: 'user' });
+    program.parse(args, { from: 'user' });
   } catch (err) {
     if (err instanceof CommanderError) {
       return err.exitCode;

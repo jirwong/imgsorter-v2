@@ -76,15 +76,15 @@ ignore_directories:
 pnpm start
 ```
 
-The CLI accepts the following options:
+The CLI accepts the following options (passed directly to the script; a leading `--` separator also works):
 
 ```bash
-pnpm start -- --config config.yaml   # use a specific config file
-pnpm start -- --quiet                # only warnings and errors
-pnpm start -- --verbose              # debug-level output
-pnpm start -- --no-progress          # disable the live spinner (e.g. for piping)
-pnpm start -- --help                 # show help
-pnpm start -- --version              # show the version
+pnpm start --config config.yaml   # use a specific config file
+pnpm start --quiet                # only warnings and errors
+pnpm start --verbose              # debug-level output
+pnpm start --no-progress          # disable the live spinner (e.g. for piping)
+pnpm start --help                 # show help
+pnpm start --version              # show the version
 ```
 
 ### Exit codes

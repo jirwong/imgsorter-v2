@@ -60,6 +60,9 @@ describe('main', () => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     vi.spyOn(console, 'error').mockImplementation(() => {});
+    // commander writes --help/--version output and errors directly to the streams
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
   });
 
   afterEach(async () => {
@@ -131,6 +134,20 @@ describe('main', () => {
 
     const code = await main(['--config', join(rootDir, 'config.yaml')]);
     expect(code).toBe(2);
+  });
+
+  it('handles a leading -- separator forwarded by pnpm', async () => {
+    await createFile(rootDir, 'pics/a.txt', 'hello');
+    await fs.writeFile(join(rootDir, 'config.yaml'), makeConfigYaml(rootDir));
+
+    // `pnpm start -- --config x` forwards the literal `--` as the first arg
+    const code = await main(['--', '--config', join(rootDir, 'config.yaml')]);
+
+    expect(code).toBe(0);
+    const db = new Database(join(rootDir, 'test.db'));
+    const count = db.prepare('SELECT COUNT(*) AS c FROM entries').get() as { c: number };
+    db.close();
+    expect(count.c).toBe(1);
   });
 
   it('returns 0 for --help', async () => {
