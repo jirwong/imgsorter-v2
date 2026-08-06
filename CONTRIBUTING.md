@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for your interest in contributing to this template.
+Thanks for your interest in contributing to imgsorter-v2.
 
 ## Prerequisites
 
