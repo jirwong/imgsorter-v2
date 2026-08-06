@@ -57,7 +57,6 @@ export async function main(argv: string[]): Promise<number> {
     reporter.printSummary(summary);
     return 0;
   } catch (err) {
-    reporter.stopProgress();
     reporter.error(`Run failed: ${errorMessage(err)}`);
     return 2;
   } finally {
