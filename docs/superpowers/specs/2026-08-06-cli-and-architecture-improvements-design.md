@@ -58,7 +58,7 @@ New file `src/output/reporter.ts`:
 
 ### RunSummary
 
-New type in `src/types/` (or colocated with Runner): returned by `Runner.run()`:
+New type `RunSummary` in `src/types/run-summary.ts` (matching the existing `src/types/` layout), returned by `Runner.run()`:
 
 ```ts
 type RunSummary = {
