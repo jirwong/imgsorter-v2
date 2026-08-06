@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { promises as fs } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname, extname, basename } from 'node:path';
-import { fileService } from './file-service';
+import { fileExists, getHashEdges, listFilePathsRecursive, listFilesRecursive, readFileInfo } from './file-service';
 import { createHash } from 'node:crypto';
 
 async function makeTempDir(prefix = 'file-service-test-'): Promise<string> {
@@ -21,7 +21,7 @@ async function createFile(root: string, relativePath: string, content: string): 
   return fullPath;
 }
 
-describe('fileService', () => {
+describe('fileService functions', () => {
   let rootDir: string;
 
   beforeEach(async () => {
@@ -37,8 +37,8 @@ describe('fileService', () => {
       const existing = await createFile(rootDir, 'exists.txt', 'hello');
       const missing = join(rootDir, 'missing.txt');
 
-      await expect(fileService.fileExists(existing)).resolves.toBe(true);
-      await expect(fileService.fileExists(missing)).resolves.toBe(false);
+      await expect(fileExists(existing)).resolves.toBe(true);
+      await expect(fileExists(missing)).resolves.toBe(false);
     });
   });
 
@@ -46,7 +46,7 @@ describe('fileService', () => {
     it('returns file info for an existing file', async () => {
       const filePath = await createFile(rootDir, 'images/sample.PNG', 'hello world');
 
-      const info = await fileService.readFileInfo(filePath);
+      const info = await readFileInfo(filePath);
 
       const stats = await fs.stat(filePath);
 
@@ -61,14 +61,14 @@ describe('fileService', () => {
     it('can skip hash calculation when getHash is false', async () => {
       const filePath = await createFile(rootDir, 'images/nohash.png', 'content');
 
-      const info = await fileService.readFileInfo(filePath, false);
+      const info = await readFileInfo(filePath, false);
 
       expect(info.hash).toBeUndefined();
     });
 
     it('throws when file does not exist', async () => {
       const nonExistent = join(rootDir, 'does-not-exist.png');
-      await expect(fileService.readFileInfo(nonExistent)).rejects.toThrow();
+      await expect(readFileInfo(nonExistent)).rejects.toThrow();
     });
   });
 
@@ -96,7 +96,7 @@ describe('fileService', () => {
       const content = 'small file content';
       const filePath = await createFile(rootDir, 'files/small.txt', content);
 
-      const hash = await fileService.getHashEdges(filePath);
+      const hash = await getHashEdges(filePath);
       expect(hash).toBe(computeExpectedEdgeHash(content, 16 * 1024));
     });
 
@@ -106,8 +106,8 @@ describe('fileService', () => {
       const fileA = await createFile(rootDir, 'files/a.bin', contentA);
       const fileB = await createFile(rootDir, 'files/b.bin', contentB);
 
-      const hashA = await fileService.getHashEdges(fileA);
-      const hashB = await fileService.getHashEdges(fileB);
+      const hashA = await getHashEdges(fileA);
+      const hashB = await getHashEdges(fileB);
 
       expect(hashA).not.toBe(hashB);
     });
@@ -131,13 +131,13 @@ describe('fileService', () => {
         return h.digest('hex');
       })();
 
-      const actual = await fileService.getHashEdges(filePath);
+      const actual = await getHashEdges(filePath);
       expect(actual).toBe(expectedHash);
     });
 
     it('throws when file does not exist', async () => {
       const nonExistent = join(rootDir, 'missing.bin');
-      await expect(fileService.getHashEdges(nonExistent)).rejects.toThrow();
+      await expect(getHashEdges(nonExistent)).rejects.toThrow();
     });
   });
 
@@ -147,7 +147,7 @@ describe('fileService', () => {
       const file2 = await createFile(rootDir, 'a/b/photo2.JPG', 'two');
       const file3 = await createFile(rootDir, 'c/note.txt', 'three');
 
-      const files = await fileService.listFilesRecursive(rootDir);
+      const files = await listFilesRecursive(rootDir);
       const paths = files.map((f) => join(f.directory, f.filename));
 
       expect(paths).toContain(file1);
@@ -161,7 +161,7 @@ describe('fileService', () => {
       const pngMixed = await createFile(rootDir, 'images/pic3.PnG', 'png-mixed');
       await createFile(rootDir, 'images/readme.txt', 'text');
 
-      const files = await fileService.listFilesRecursive(rootDir, ['.JPG', '.pNg']);
+      const files = await listFilesRecursive(rootDir, ['.JPG', '.pNg']);
       const paths = files.map((f) => join(f.directory, f.filename));
 
       expect(paths).toContain(jpgLower);
@@ -173,14 +173,14 @@ describe('fileService', () => {
     it('returns an empty array when no files match the given extensions', async () => {
       await createFile(rootDir, 'images/pic1.jpg', 'jpg-lower');
 
-      const files = await fileService.listFilesRecursive(rootDir, ['.txt']);
+      const files = await listFilesRecursive(rootDir, ['.txt']);
       expect(files.length).toBe(0);
     });
 
     it('respects getHash=false and does not populate hash', async () => {
       const file1 = await createFile(rootDir, 'a/photo1.jpg', 'one');
 
-      const files = await fileService.listFilesRecursive(rootDir, undefined, false);
+      const files = await listFilesRecursive(rootDir, undefined, false);
 
       const match = files.find((f) => join(f.directory, f.filename) === file1)!;
       expect(match.hash).toBeUndefined();
@@ -195,10 +195,15 @@ describe('fileService', () => {
       // Remove badDir so readdir throws ENOENT
       await fs.rmdir(badDir);
 
-      const files = await fileService.listFilesRecursive(rootDir);
+      const files = await listFilesRecursive(rootDir);
       const paths = files.map((f) => join(f.directory, f.filename));
 
       expect(paths).toContain(goodFile);
+    });
+
+    it('rejects when the root directory cannot be read', async () => {
+      const missing = join(rootDir, 'missing-root');
+      await expect(listFilesRecursive(missing)).rejects.toThrow();
     });
   });
 
@@ -208,13 +213,13 @@ describe('fileService', () => {
       const file2 = await createFile(rootDir, 'a/b/photo2.JPG', 'two');
       const file3 = await createFile(rootDir, 'c/note.txt', 'three');
 
-      const paths = await fileService.listFilePathsRecursive(rootDir);
+      const paths = await listFilePathsRecursive(rootDir);
 
       expect(paths.sort()).toEqual([file1, file2, file3].sort());
     });
 
     it('returns an empty array when there are no files', async () => {
-      const paths = await fileService.listFilePathsRecursive(rootDir);
+      const paths = await listFilePathsRecursive(rootDir);
       expect(paths).toEqual([]);
     });
 
@@ -222,9 +227,14 @@ describe('fileService', () => {
       const keep = await createFile(rootDir, 'a/keep.txt', 'keep');
       await createFile(rootDir, 'b/ignored/drop.txt', 'drop');
 
-      const paths = await fileService.listFilePathsRecursive(rootDir, [join(rootDir, 'b', 'ignored')]);
+      const paths = await listFilePathsRecursive(rootDir, [join(rootDir, 'b', 'ignored')]);
 
       expect(paths).toEqual([keep]);
+    });
+
+    it('rejects when the root directory cannot be read', async () => {
+      const missing = join(rootDir, 'missing-root');
+      await expect(listFilePathsRecursive(missing)).rejects.toThrow();
     });
   });
 });

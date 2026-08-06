@@ -193,4 +193,46 @@ describe('Runner', () => {
     db.close();
     expect(rows.map((r) => r.filename)).toEqual(['b.txt']);
   });
+
+  it('continues scanning the remaining directories when one cannot be scanned', async () => {
+    await createFile(rootDir, 'src/a.txt', 'hello');
+
+    const config: RunConfiguration = {
+      ...makeConfig(dbPath, join(rootDir, 'src')),
+      directories: [join(rootDir, 'missing'), join(rootDir, 'src')],
+    };
+    const runner = new Runner(config);
+    await runner.run();
+    runner.close();
+
+    const db = new Database(dbPath);
+    const count = db.prepare('SELECT COUNT(*) as c FROM entries').get() as { c: number };
+    db.close();
+    expect(count.c).toBe(1);
+  });
+
+  it('keeps entries when the resync directory cannot be listed', async () => {
+    await createFile(rootDir, 'src/a.txt', 'alpha');
+
+    const runner = new Runner(makeConfig(dbPath, join(rootDir, 'src')));
+    await runner.run();
+    runner.close();
+
+    // Remove the directory, then resync against the now-missing path
+    await fs.rm(join(rootDir, 'src'), { recursive: true, force: true });
+    const resyncConfig: RunConfiguration = {
+      ...makeConfig(dbPath, join(rootDir, 'src')),
+      process_directories: false,
+      resync_directories: true,
+      resync_check_actual_file: false,
+    };
+    const resyncRunner = new Runner(resyncConfig);
+    await resyncRunner.run();
+    resyncRunner.close();
+
+    const db = new Database(dbPath);
+    const count = db.prepare('SELECT COUNT(*) as c FROM entries').get() as { c: number };
+    db.close();
+    expect(count.c).toBe(1);
+  });
 });
