@@ -217,5 +217,14 @@ describe('fileService', () => {
       const paths = await fileService.listFilePathsRecursive(rootDir);
       expect(paths).toEqual([]);
     });
+
+    it('skips ignored directories', async () => {
+      const keep = await createFile(rootDir, 'a/keep.txt', 'keep');
+      await createFile(rootDir, 'b/ignored/drop.txt', 'drop');
+
+      const paths = await fileService.listFilePathsRecursive(rootDir, [join(rootDir, 'b', 'ignored')]);
+
+      expect(paths).toEqual([keep]);
+    });
   });
 });

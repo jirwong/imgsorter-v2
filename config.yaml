@@ -1,0 +1,28 @@
+# Local database name (uses SQLite)
+dbName: local.db
+
+# File extensions to index. Can be a comma-separated string or an array of strings.
+# Extension matching is case-insensitive, and leading dots are optional.
+extensions: jpg,png,gif,jpeg,mp4,mov
+
+# Whether to scan and index the configured directories.
+process_directories: true
+
+# Whether to rebuild the duplicate summary `records` table from the `entries` table.
+update_records: true
+
+# Whether to remove stale entries when files have been deleted or moved outside the application.
+resync_directories: false
+
+# When resync_directories is true, this controls how stale entries are detected.
+# true  = verify each database entry by checking the filesystem directly.
+# false = compare database entries against the current directory listing.
+resync_check_actual_file: false
+
+# Directories to scan recursively.
+directories:
+  - C:\Users\YourName\Pictures
+
+# Directories to skip during scanning. These paths and their contents are ignored.
+ignore_directories:
+  - C:\Users\YourName\Pictures\Luminar Neo Catalog

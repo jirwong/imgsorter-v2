@@ -376,6 +376,36 @@ describe('DbService', () => {
     db.close();
   });
 
+  it('removes stale records when their entries are deleted', () => {
+    const service = openService();
+
+    const entry: FileEntry = {
+      size: 100,
+      directory: '/tmp/a',
+      extension: '.png',
+      path: '/tmp/a/foo.png',
+      filename: 'foo.png',
+      birthtime: new Date('2025-01-01T00:00:00.000Z'),
+      hash: 'hash-1',
+    };
+
+    service.insertFileInfo(entry);
+    service.updateFileRecords();
+
+    // Delete the underlying entry, then rebuild records
+    service.deleteFileEntryByPath(entry.path);
+    service.updateFileRecords();
+
+    const db = new Database(dbPath);
+    const rows = db.prepare('SELECT filename, hash FROM records').all() as {
+      filename: string;
+      hash: string;
+    }[];
+    db.close();
+
+    expect(rows).toEqual([]);
+  });
+
   it('getFileEntriesByDirectory returns entries whose directory matches the given prefix', () => {
     const service = openService();
 

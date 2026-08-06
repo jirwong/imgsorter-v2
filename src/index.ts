@@ -1,13 +1,16 @@
-import { env } from './env';
-import { addI } from './simple-add-i';
+import { Runner } from './runner';
+import { loadRunConfiguration } from './utilities/load-config';
 
-function test(input: string) {
-  console.log('Hello.');
-  console.log('String received: ', input);
-  console.log('NODE_ENV:', env.NODE_ENV);
-  console.log('PORT:', env.PORT);
-  const res = addI(1, 2);
-  console.log('Res:', res);
-}
+(async () => {
+  const config = await loadRunConfiguration('config.yaml');
 
-test('Input');
+  const runner = new Runner(config);
+  try {
+    await runner.run();
+  } finally {
+    runner.close();
+  }
+})().catch((err) => {
+  console.error('Run failed:', err);
+  process.exitCode = 1;
+});
