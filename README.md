@@ -99,7 +99,7 @@ Per-directory problems (e.g. an unreadable scan directory) do not fail the run: 
 
 ### Output
 
-When run in a terminal, a live progress spinner shows the active phase — e.g. `[1/2] Scanning…`, `[2/2] Rebuilding records…` with the default config. Phases are numbered `1/N…N/N` across the phases enabled in the config (all three enabled shows `[1/3]…[3/3]`). When output is piped or `--no-progress` is used, phases are printed as plain lines instead — no control characters in captured logs. A run summary with per-phase timings, counters, and any collected errors is printed at the end.
+When run in a terminal, a live progress spinner shows the active phase — e.g. `[1/2] Scanning…`, `[2/2] Rebuilding records…` with the default config. Phases are numbered `1/N…N/N` across the phases enabled in the config (all three enabled shows `[1/3]…[3/3]`). During scanning and resyncing, the spinner also shows the file currently being examined (its path relative to the scanned directory). When output is piped or `--no-progress` is used, phases are printed as plain lines instead — no control characters in captured logs. A run summary with per-phase timings, counters, and any collected errors is printed at the end.
 
 ## Available Commands
 

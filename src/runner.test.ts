@@ -304,4 +304,57 @@ describe('Runner', () => {
     expect(reporter.info).toHaveBeenCalledWith(expect.stringContaining('[2/2]'));
     expect(reporter.progress).toHaveBeenCalledWith(expect.stringContaining('[1/2]'));
   });
+
+  it('updates progress with the current file during scanning', async () => {
+    await createFile(rootDir, 'src/sub/a.txt', 'hello');
+
+    const reporter = makeMockReporter();
+    const runner = new Runner(makeConfig(dbPath, join(rootDir, 'src')), reporter);
+    await runner.run();
+    runner.close();
+
+    expect(reporter.progress).toHaveBeenCalledWith(`Scanning ${join(rootDir, 'src')} → ${join('sub', 'a.txt')}`);
+  });
+
+  it('updates progress with the current entry during resync (check actual file)', async () => {
+    await createFile(rootDir, 'src/a.txt', 'alpha');
+
+    const runner = new Runner(makeConfig(dbPath, join(rootDir, 'src')), makeMockReporter());
+    await runner.run();
+    runner.close();
+
+    const resyncConfig: RunConfiguration = {
+      ...makeConfig(dbPath, join(rootDir, 'src')),
+      process_directories: false,
+      resync_directories: true,
+      resync_check_actual_file: true,
+    };
+    const reporter = makeMockReporter();
+    const resyncRunner = new Runner(resyncConfig, reporter);
+    await resyncRunner.run();
+    resyncRunner.close();
+
+    expect(reporter.progress).toHaveBeenCalledWith(`Resyncing ${join(rootDir, 'src')} → ${join('a.txt')}`);
+  });
+
+  it('updates progress with the current entry during resync (directory listing)', async () => {
+    await createFile(rootDir, 'src/a.txt', 'alpha');
+
+    const runner = new Runner(makeConfig(dbPath, join(rootDir, 'src')), makeMockReporter());
+    await runner.run();
+    runner.close();
+
+    const resyncConfig: RunConfiguration = {
+      ...makeConfig(dbPath, join(rootDir, 'src')),
+      process_directories: false,
+      resync_directories: true,
+      resync_check_actual_file: false,
+    };
+    const reporter = makeMockReporter();
+    const resyncRunner = new Runner(resyncConfig, reporter);
+    await resyncRunner.run();
+    resyncRunner.close();
+
+    expect(reporter.progress).toHaveBeenCalledWith(`Resyncing ${join(rootDir, 'src')} → ${join('a.txt')}`);
+  });
 });

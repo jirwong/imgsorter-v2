@@ -127,7 +127,11 @@ export async function listFilesRecursive(
 
 // Recursively list all file paths under a directory without reading file metadata.
 // An unreadable root directory rejects; unreadable sub-directories are skipped.
-export async function listFilePathsRecursive(rootDir: string, ignoreDirectories?: string[]): Promise<string[]> {
+export async function listFilePathsRecursive(
+  rootDir: string,
+  ignoreDirectories?: string[],
+  onFile?: (filePath: string) => void,
+): Promise<string[]> {
   const result: string[] = [];
 
   async function walk(dir: string): Promise<void> {
@@ -150,6 +154,7 @@ export async function listFilePathsRecursive(rootDir: string, ignoreDirectories?
         }
         await walk(fullPath);
       } else if (entry.isFile()) {
+        onFile?.(fullPath);
         result.push(fullPath);
       }
     }

@@ -252,5 +252,17 @@ describe('fileService functions', () => {
       const missing = join(rootDir, 'missing-root');
       await expect(listFilePathsRecursive(missing)).rejects.toThrow();
     });
+
+    it('calls onFile with the full path of every file encountered', async () => {
+      await createFile(rootDir, 'a/photo1.jpg', 'one');
+      await createFile(rootDir, 'a/sub/photo2.JPG', 'two');
+
+      const seen: string[] = [];
+      await listFilePathsRecursive(rootDir, [], (filePath) => {
+        seen.push(filePath);
+      });
+
+      expect(seen.sort()).toEqual([join(rootDir, 'a', 'photo1.jpg'), join(rootDir, 'a', 'sub', 'photo2.JPG')].sort());
+    });
   });
 });
