@@ -148,8 +148,9 @@ export class DbService {
   }
 
   insertFileInfo(fileInfo: FileEntry): 'inserted' | 'updated' {
-    // An INSERT advances last_insert_rowid (AUTOINCREMENT ids are strictly
-    // increasing); an ON CONFLICT DO UPDATE leaves it unchanged.
+    // An INSERT sets last_insert_rowid() to the new row id. An ON CONFLICT DO
+    // UPDATE — even a no-op one — leaves last_insert_rowid() unchanged, so the
+    // before/after comparison distinguishes inserted from updated.
     const before = this.lastInsertRowidStmt.get() as { rowid: number };
 
     this.insertEntryStmt.run({
@@ -207,6 +208,23 @@ export class DbService {
     }
   }
 
+  /**
+   * Duplicate statistics derived from the `records` table.
+   *
+   * Precondition: call `updateFileRecords()` after any `entries` change so the
+   * `records` table reflects current entries; otherwise the results are stale
+   * (and `{0, 0}` for a fresh table). The Runner always runs `updateFileRecords`
+   * before reading these stats.
+   *
+   * A "duplicate group" is a `records` row with count > 1 — the same filename,
+   * size and hash verified in more than one directory. Files with identical
+   * content but different names form separate single-count groups and are not
+   * counted (this matches `updateFileRecords` grouping).
+   *
+   * Entries written with `getHash=false` store a NULL hash and group under NULL;
+   * such rows are counted like any other (unverified, same-named, same-sized
+   * files).
+   */
   getDuplicateStats(): DuplicateStats {
     const groups = this.duplicateGroupsStmt.get() as { n: number };
     const files = this.duplicateFilesStmt.get() as { n: number };
