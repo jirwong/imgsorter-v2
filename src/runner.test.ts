@@ -207,6 +207,8 @@ describe('Runner', () => {
     expect(rows.map((r) => r.filename)).toEqual(['b.txt']);
     expect(summary.staleRemoved).toBe(1);
     expect(summary.phases.map((p) => p.name)).toEqual(['resync', 'records']);
+    // resync + records enabled -> resync marker is [1/2]
+    expect(reporter.progress).toHaveBeenCalledWith(expect.stringContaining('[1/2]'));
   });
 
   it('resyncs against the current directory listing when checkActualFile is false', async () => {
@@ -289,7 +291,7 @@ describe('Runner', () => {
     expect(reporter.warn).toHaveBeenCalledWith(expect.stringContaining('Failed to resync directory'));
   });
 
-  it('reports phase markers via the reporter', async () => {
+  it('numbers phase markers by the enabled phases', async () => {
     await createFile(rootDir, 'src/a.txt', 'hello');
 
     const reporter = makeMockReporter();
@@ -297,8 +299,9 @@ describe('Runner', () => {
     await runner.run();
     runner.close();
 
-    expect(reporter.info).toHaveBeenCalledWith(expect.stringContaining('[1/3]'));
-    expect(reporter.info).toHaveBeenCalledWith(expect.stringContaining('[3/3]'));
-    expect(reporter.progress).toHaveBeenCalledWith(expect.stringContaining('[1/3]'));
+    // makeConfig enables scan + records (no resync) -> markers are [1/2] and [2/2]
+    expect(reporter.info).toHaveBeenCalledWith(expect.stringContaining('[1/2]'));
+    expect(reporter.info).toHaveBeenCalledWith(expect.stringContaining('[2/2]'));
+    expect(reporter.progress).toHaveBeenCalledWith(expect.stringContaining('[1/2]'));
   });
 });
