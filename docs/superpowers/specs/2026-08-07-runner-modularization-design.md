@@ -24,8 +24,8 @@ message string is byte-for-byte unchanged.
 
 - `Runner` class holding `db`, `config`, `reporter`.
 - `run()` — builds the enabled-phase list, tracks `[n/total]` markers, runs the
-  three phases, and accumulates six counters plus a shared `errors[]` array into
-  `RunSummary`.
+  three phases, and accumulates five numeric counters plus the `phases` and a
+  shared `errors[]` array into `RunSummary`.
 - `processDirectories()` (scan), `resyncDirectories()` (resync),
   `updateRecords()` (records) — each phase method mixes directory iteration,
   ignore-set checks, per-directory error collection, progress reporting, and DB
@@ -33,8 +33,9 @@ message string is byte-for-byte unchanged.
 
 Problems:
 
-- `run()` is a mutable-accumulator soup (`filesScanned`, `entriesUpserted`,
-  `duplicateGroups`, `duplicateFiles`, `staleRemoved`, `errors`).
+- `run()` is a mutable-accumulator soup: five numeric counters (`filesScanned`,
+  `entriesUpserted`, `duplicateGroups`, `duplicateFiles`, `staleRemoved`) plus the
+  `phases` and `errors` arrays.
 - `errors: string[]` is passed by reference and mutated inside phases (subtle).
 - `processDirectories` and `resyncDirectories` duplicate the same directory
   iteration / ignore / per-directory-error shape.
@@ -70,15 +71,17 @@ Rejected alternatives:
 ```
 src/
 ├── runner.ts                        # thin orchestrator
+├── types/
+│   └── progress.ts                  # ProgressEvent + ProgressSink (emit-only contract)
 ├── phases/
 │   ├── types.ts                     # Phase, PhaseContext, PhaseResult
-│   ├── iterate-directories.ts       # shared dir-iteration + ignore + per-dir error helper
+│   ├── iterate-directories.ts       # shared dir-iteration + ignore + directoryStart helper
 │   ├── scan-phase.ts                # ScanPhase
 │   ├── resync-phase.ts              # ResyncPhase
 │   ├── records-phase.ts             # RecordsPhase
-│   └── index.ts                     # PHASES = [ScanPhase, ResyncPhase, RecordsPhase]
+│   └── index.ts                     # PHASES = [ScanPhase, ResyncPhase, RecordsPhase] (singletons)
 └── output/
-    ├── progress.ts                  # ProgressEmitter + ProgressEvent types
+    ├── progress.ts                  # ProgressEmitter (implements ProgressSink, adds listener side)
     └── reporter.ts                  # Reporter (output-only) + CliReporter (subscribes to emitter)
 ```
 
@@ -95,7 +98,7 @@ type PhaseContext = {
   config: RunConfiguration;
   db: DbService;
   reporter: Reporter; // output only: debug/info/warn
-  progress: ProgressEmitter; // structured progress events
+  progress: ProgressSink; // emit-only view of the progress channel
   marker: string; // "[n/total]" computed by the Runner
 };
 
@@ -110,6 +113,29 @@ type PhaseResult =
   - `resync` ↔ `config.resync_directories`
   - `records` ↔ `config.update_records`
 - Each phase owns and returns its `errors: string[]`; no shared mutable array.
+- Note: `records` is synchronous today (`runner.ts:73`); `Phase.run` returns a
+  Promise, so `RecordsPhase.run` wraps its synchronous body in an async function.
+
+### Shared directory iteration (`phases/iterate-directories.ts`)
+
+```ts
+async function iterateDirectories(
+  phase: PhaseName,
+  deps: { config: RunConfiguration; reporter: Reporter; progress: ProgressSink },
+  body: (directory: string) => Promise<void>,
+): Promise<void>;
+```
+
+- Owns the loop over `config.directories`, the `isIgnored` check (emitting
+  `reporter.info("Ignoring directory: …")` and skipping), and emitting
+  `{ type: 'directoryStart', phase, directory }` **before** calling `body` —
+  matching the current `progress()` ordering (`runner.ts:104` before the listing
+  at `:108`).
+- Does **not** catch exceptions. Each phase `body` wraps only its own directory
+  _listing_ call in try/catch (push to its `errors[]`, `reporter.warn`, return)
+  and lets DB errors propagate. In `resync_check_actual_file` mode the body has
+  no listing call and therefore no try/catch at all — any DB error propagates and
+  fails the run, preserving current semantics.
 
 ### Runner (`runner.ts`)
 
@@ -125,22 +151,31 @@ export class Runner {
 }
 ```
 
-- `PHASES` registry from `phases/index.ts` replaces the manual
+- `PHASES` from `phases/index.ts` holds **singleton instances** (phases are
+  stateless — all deps arrive via `ctx`), replacing the manual
   `enabledPhases.push(...)` block.
 - Marker computation is derived from the enabled list, preserving the existing
   dynamic numbering behavior.
 
-### Progress events (`output/progress.ts`)
+### Progress contract (`types/progress.ts`, `output/progress.ts`)
 
 ```ts
 type ProgressEvent =
   | { type: 'phaseStart'; phase: PhaseName; marker: string }
   | { type: 'directoryStart'; phase: PhaseName; directory: string }
   | { type: 'file'; phase: PhaseName; directory: string; currentFile: string };
+
+// emit-only view; phases depend on this and nothing else
+interface ProgressSink {
+  emitProgress(event: ProgressEvent): void;
+}
 ```
 
-`ProgressEmitter` wraps `node:events` EventEmitter with typed `on(cb)` and
-`emitProgress(event)` methods so event shapes cannot be typo'd.
+`ProgressEmitter` (`output/progress.ts`) implements `ProgressSink` and adds the
+listener side — a typed `on(listener)` over `node:events` — so phases emit via
+`ProgressSink` while `CliReporter`/Electron subscribe via `on`. This keeps
+`phases/` free of any dependency on `output/`; tests and Electron can substitute
+a fake `ProgressSink` freely. Event shapes cannot be typo'd.
 
 Phases emit these instead of calling `reporter.progress(...)`. `currentFile` is
 the absolute path — useful to Electron; display formatting stays in the adapter.
@@ -152,7 +187,9 @@ the absolute path — useful to Electron; display formatting stays in the adapte
 - `CliReporter` implements `Reporter` and gains `subscribe(progress)` which
   registers event handlers that reproduce the exact current strings:
   - `phaseStart` → `info("${marker} ${label}")` (label: `Scanning…`, `Resyncing…`,
-    `Rebuilding records…`), then start spinner with same text.
+    `Rebuilding records…`), **then** `progress(...)` with the same text. The
+    info-then-progress ordering (`runner.ts:92-93`) is a contract: the marker
+    line prints before the spinner restarts. A reporter test asserts it.
   - `directoryStart` → `progress("${verb} ${directory}")` (verb: `Scanning` /
     `Resyncing`, derived from `event.phase`).
   - `file` → `progress("${verb} ${directory} → ${relative(directory, currentFile)}")`.
@@ -183,10 +220,12 @@ const runner = new Runner(config, reporter, progress);
 ## Error Handling
 
 - Directory-level failures (unreadable root listing) are non-fatal: the phase
-  pushes to its own `errors[]`, calls `reporter.warn`, and continues to the next
-  directory. `iterateDirectories` encapsulates this.
-- DB failures propagate and fail the run — no `try/catch` around DB calls in
-  phases. This matches current behavior.
+  `body` wraps only its listing call, pushes to its own `errors[]`, calls
+  `reporter.warn`, and returns so iteration continues. `iterateDirectories` owns
+  the loop but never catches.
+- DB failures propagate and fail the run — no `try/catch` around DB calls. This
+  holds in both resync modes: the `resync_check_actual_file` body has no listing
+  call and therefore no try/catch at all.
 
 ## Testing
 
@@ -201,7 +240,9 @@ const runner = new Runner(config, reporter, progress);
   - Counter values, summary shape, info/warn messages, and error collection pass
     unchanged.
 - **`src/output/reporter.test.ts`** gains coverage for `subscribe()` event →
-  string formatting (verifying CLI text is preserved).
+  string formatting (verifying CLI text is preserved), including an assertion
+  that `phaseStart` calls `info()` before `progress()` (spinner-restart
+  ordering).
 - Coverage thresholds (80%) remain enforced.
 
 ## Out of Scope
