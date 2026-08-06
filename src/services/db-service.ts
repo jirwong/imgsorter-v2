@@ -2,15 +2,31 @@ import Database from 'better-sqlite3';
 import type { Database as DatabaseType } from 'better-sqlite3';
 import type { FileEntry, FileRecord } from '../types/file-types';
 
+type EntryRow = {
+  size: number;
+  directory: string;
+  extension: string;
+  filename: string;
+  birthtime: string;
+  hash: string | null;
+  path: string;
+};
+
+function escapeLike(value: string): string {
+  return value.replace(/[\\%_]/g, (ch) => `\\${ch}`);
+}
+
 export class DbService {
   private db: DatabaseType;
 
   constructor(dbPath: string) {
     this.db = new Database(dbPath);
-
     this.db.pragma('journal_mode = WAL');
-
     this.createTables();
+  }
+
+  close() {
+    this.db.close();
   }
 
   private createTables() {
@@ -110,7 +126,7 @@ export class DbService {
               cast(json_group_array(distinct directory) as varchar) as directories,
               count(*)                             as row_count
        from entries
-       group by hash, filename, size
+       group by hash, filename, size, extension
        order by filename;
       `;
 
@@ -124,42 +140,37 @@ export class DbService {
     }[];
 
     for (const row of rows) {
-      const record: FileRecord = {
+      // json_group_array returns a JSON array; round-trip through JSON.parse normalizes
+      // escaping (e.g. Windows backslashes) without corrupting real double backslashes.
+      const directories = JSON.stringify(JSON.parse(row.directories));
+
+      this.insertFileRecord({
         filename: row.filename,
         hash: row.hash,
         count: row.row_count,
         extension: row.extension,
-        // replace \\ with \ to fix Windows paths stored in JSON array
-        directories: row.directories.replace(/\\\\/g, '\\'),
+        directories,
         size: row.size,
-      };
-
-      console.log(
-        'Updating record for hash:',
-        record.hash,
-        'filename:',
-        record.filename,
-        'count:',
-        record.count,
-        'size:',
-        record.size,
-      );
-
-      this.insertFileRecord(record);
+      });
     }
   }
 
   getFileEntries() {
     const selectSql = `SELECT size, directory, extension, filename, birthtime, hash, path FROM entries`;
-    return this.db.prepare(selectSql).all() as FileEntry[];
+    const rows = this.db.prepare(selectSql).all() as EntryRow[];
+    return rows.map((row) => this.mapEntry(row));
   }
 
   getFileEntriesByDirectory(directory: string) {
-    // Use LIKE so callers can pass a prefix (e.g. 'C:\\Jir%') to match subdirectories.
-    // If the caller does not include a wildcard, we append '%' to match any suffix.
-    const pattern = directory.includes('%') || directory.includes('_') ? directory : `${directory}%`;
-    const selectSql = `SELECT size, directory, extension, filename, birthtime, hash, path FROM entries WHERE directory LIKE ?`;
-    return this.db.prepare(selectSql).all(pattern) as FileEntry[];
+    // Match the directory itself and any directory beneath it, bounded by a path
+    // separator. Wildcard characters in the directory name are escaped so they are
+    // not treated as LIKE patterns. Both '/' and '\' separators are handled.
+    const escaped = escapeLike(directory);
+    const selectSql = `SELECT size, directory, extension, filename, birthtime, hash, path
+       FROM entries
+       WHERE directory = ? OR directory LIKE ? ESCAPE '\\' OR directory LIKE ? ESCAPE '\\'`;
+    const rows = this.db.prepare(selectSql).all(directory, `${escaped}/%`, `${escaped}\\${'\\'}%`) as EntryRow[];
+    return rows.map((row) => this.mapEntry(row));
   }
 
   deleteFileEntryById(id: number) {
@@ -170,5 +181,17 @@ export class DbService {
   deleteFileEntryByPath(path: string) {
     const deleteSql = `DELETE FROM entries WHERE path = ?`;
     this.db.prepare(deleteSql).run(path);
+  }
+
+  private mapEntry(row: EntryRow): FileEntry {
+    return {
+      size: row.size,
+      directory: row.directory,
+      extension: row.extension,
+      filename: row.filename,
+      birthtime: new Date(row.birthtime),
+      hash: row.hash ?? undefined,
+      path: row.path,
+    };
   }
 }

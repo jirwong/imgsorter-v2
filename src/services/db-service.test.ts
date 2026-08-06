@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promises as fs } from 'node:fs';
@@ -9,25 +9,39 @@ import type { FileEntry, FileRecord } from '../types/file-types';
 async function removeFile(path: string) {
   try {
     await fs.unlink(path);
-  } catch {
-    // ignore if file does not exist
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code !== 'ENOENT') {
+      console.error('Failed to remove test db file:', err);
+    }
   }
 }
 
 describe('DbService', () => {
   let dbPath: string;
+  let services: DbService[];
 
   beforeEach(async () => {
     dbPath = join(tmpdir(), `db-service-test-${Date.now()}.sqlite`);
+    services = [];
     await removeFile(dbPath);
   });
 
   afterEach(async () => {
+    for (const service of services) {
+      service.close();
+    }
     await removeFile(dbPath);
   });
 
-  it('creates entries and records tables on construction', () => {
+  function openService(): DbService {
     const service = new DbService(dbPath);
+    services.push(service);
+    return service;
+  }
+
+  it('creates entries and records tables on construction', () => {
+    const service = openService();
     expect(service.getFileEntries()).toEqual([]);
 
     const db = new Database(dbPath);
@@ -65,7 +79,7 @@ describe('DbService', () => {
   });
 
   it('inserts a FileEntry into entries table', () => {
-    const service = new DbService(dbPath);
+    const service = openService();
 
     const entry: FileEntry = {
       size: 123,
@@ -102,7 +116,7 @@ describe('DbService', () => {
   });
 
   it('inserts a FileRecord into records table', () => {
-    const service = new DbService(dbPath);
+    const service = openService();
 
     const record: FileRecord = {
       filename: 'bar.png',
@@ -134,7 +148,7 @@ describe('DbService', () => {
   });
 
   it('upserts a FileEntry when called with the same path', () => {
-    const service = new DbService(dbPath);
+    const service = openService();
 
     const original: FileEntry = {
       size: 123,
@@ -184,7 +198,7 @@ describe('DbService', () => {
   });
 
   it('upserts a FileRecord when called with the same filename and hash', () => {
-    const service = new DbService(dbPath);
+    const service = openService();
 
     const original: FileRecord = {
       filename: 'baz.png',
@@ -223,7 +237,7 @@ describe('DbService', () => {
   });
 
   it('returns all file entries from the entries table via getFileEntries', () => {
-    const service = new DbService(dbPath);
+    const service = openService();
 
     const entry1: FileEntry = {
       size: 100,
@@ -258,7 +272,7 @@ describe('DbService', () => {
     expect(e1.directory).toBe(entry1.directory);
     expect(e1.extension).toBe(entry1.extension);
     expect(e1.filename).toBe(entry1.filename);
-    expect(e1.birthtime).toBe(entry1.birthtime.toISOString());
+    expect(e1.birthtime).toEqual(entry1.birthtime);
     expect(e1.hash).toBe(entry1.hash);
     expect(e1.path).toBe(entry1.path);
 
@@ -267,13 +281,13 @@ describe('DbService', () => {
     expect(e2.directory).toBe(entry2.directory);
     expect(e2.extension).toBe(entry2.extension);
     expect(e2.filename).toBe(entry2.filename);
-    expect(e2.birthtime).toBe(entry2.birthtime.toISOString());
-    expect(e2.hash).toBeNull();
+    expect(e2.birthtime).toEqual(entry2.birthtime);
+    expect(e2.hash).toBeUndefined();
     expect(e2.path).toBe(entry2.path);
   });
 
   it('deletes a file entry by id', () => {
-    const service = new DbService(dbPath);
+    const service = openService();
 
     const entry: FileEntry = {
       size: 123,
@@ -300,7 +314,7 @@ describe('DbService', () => {
   });
 
   it('updates file records based on entries', () => {
-    const service = new DbService(dbPath);
+    const service = openService();
 
     const entry1: FileEntry = {
       size: 100,
@@ -336,11 +350,7 @@ describe('DbService', () => {
     service.insertFileInfo(entry2);
     service.insertFileInfo(otherHash);
 
-    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-
     service.updateFileRecords();
-
-    consoleSpy.mockRestore();
 
     const db = new Database(dbPath);
     const rows = db.prepare('SELECT filename, hash, count, directories FROM records ORDER BY filename, hash').all() as {
@@ -367,7 +377,7 @@ describe('DbService', () => {
   });
 
   it('getFileEntriesByDirectory returns entries whose directory matches the given prefix', () => {
-    const service = new DbService(dbPath);
+    const service = openService();
 
     const entry1: FileEntry = {
       size: 100,
@@ -412,7 +422,7 @@ describe('DbService', () => {
   });
 
   it('deleteFileEntryByPath removes the matching entry and is harmless if called again', () => {
-    const service = new DbService(dbPath);
+    const service = openService();
 
     const entry: FileEntry = {
       size: 123,
