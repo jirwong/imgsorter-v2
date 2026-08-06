@@ -1,5 +1,5 @@
 import { DbService } from './services/db-service';
-import { fileService } from './services/file-service';
+import { fileExists, listFilePathsRecursive, listFilesRecursive } from './services/file-service';
 import type { RunConfiguration } from './types/configuration';
 
 // Normalize paths for comparison: trim trailing separators and ignore case
@@ -52,7 +52,7 @@ export class Runner {
         continue;
       }
 
-      const files = await fileService.listFilesRecursive(directory, extensions, true, ignore_directories);
+      const files = await listFilesRecursive(directory, extensions, true, ignore_directories);
 
       for (const file of files) {
         this.db.insertFileInfo(file);
@@ -81,7 +81,7 @@ export class Runner {
         console.log('Checking actual file existence for entries...');
         for (const entry of entries) {
           console.log(`Checking file existence: ${entry.path}`);
-          const exists = await fileService.fileExists(entry.path);
+          const exists = await fileExists(entry.path);
           if (!exists) {
             this.db.deleteFileEntryByPath(entry.path);
             console.log(`Deleted missing file entry: ${entry.path}`);
@@ -89,7 +89,7 @@ export class Runner {
         }
       } else {
         console.log('Checking file entries against current directory listing...');
-        const files = await fileService.listFilePathsRecursive(directory, ignore_directories);
+        const files = await listFilePathsRecursive(directory, ignore_directories);
         const currentPaths = new Set(files.map(normalizePath));
         for (const entry of entries) {
           console.log(`Verifying file entry: ${entry.path}`);
