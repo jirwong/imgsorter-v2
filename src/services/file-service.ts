@@ -75,6 +75,7 @@ export async function listFilesRecursive(
   extensions?: string[],
   getHash: boolean = true,
   ignoreDirectories?: string[],
+  onFile?: (filePath: string) => void,
 ): Promise<FileEntry[]> {
   const result: FileEntry[] = [];
 
@@ -101,6 +102,7 @@ export async function listFilesRecursive(
         }
         await walk(fullPath);
       } else if (entry.isFile()) {
+        onFile?.(fullPath);
         try {
           const info = await readFileInfo(fullPath, getHash);
 

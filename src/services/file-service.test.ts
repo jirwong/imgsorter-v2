@@ -205,6 +205,22 @@ describe('fileService functions', () => {
       const missing = join(rootDir, 'missing-root');
       await expect(listFilesRecursive(missing)).rejects.toThrow();
     });
+
+    it('calls onFile with the full path of every file encountered', async () => {
+      await createFile(rootDir, 'a/photo1.jpg', 'one');
+      await createFile(rootDir, 'a/sub/photo2.JPG', 'two');
+      await createFile(rootDir, 'notes.txt', 'three');
+
+      const seen: string[] = [];
+      await listFilesRecursive(rootDir, ['.jpg'], true, [], (filePath) => {
+        seen.push(filePath);
+      });
+
+      // notes.txt does not match the .jpg filter but is still encountered
+      expect(seen.sort()).toEqual(
+        [join(rootDir, 'a', 'photo1.jpg'), join(rootDir, 'a', 'sub', 'photo2.JPG'), join(rootDir, 'notes.txt')].sort(),
+      );
+    });
   });
 
   describe('listFilePathsRecursive', () => {
