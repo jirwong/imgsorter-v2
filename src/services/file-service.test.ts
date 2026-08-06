@@ -21,7 +21,7 @@ async function createFile(root: string, relativePath: string, content: string): 
   return fullPath;
 }
 
-describe('fileService', () => {
+describe('fileService functions', () => {
   let rootDir: string;
 
   beforeEach(async () => {

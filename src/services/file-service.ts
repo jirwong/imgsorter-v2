@@ -1,4 +1,5 @@
 import { promises as fs } from 'node:fs';
+import type { Dirent } from 'node:fs';
 import { dirname, extname, basename, join } from 'node:path';
 import { createHash } from 'node:crypto';
 import type { FileEntry } from '../types/file-types';
@@ -68,7 +69,7 @@ export async function getHashEdges(path: string, algorithm: string = 'sha256'): 
 }
 
 // Recursively list all files under a directory and return detailed FileEntry objects.
-// Unreadable sub-directories are skipped; an unreadable root directory rejects.
+// An unreadable root directory rejects; unreadable sub-directories and files are skipped.
 export async function listFilesRecursive(
   rootDir: string,
   extensions?: string[],
@@ -81,18 +82,26 @@ export async function listFilesRecursive(
   const normalizedExtensions = extensions?.map((ext) => ext.toLowerCase());
 
   async function walk(dir: string): Promise<void> {
+    let entries: Dirent[];
     try {
-      const entries = await fs.readdir(dir, { withFileTypes: true });
+      entries = await fs.readdir(dir, { withFileTypes: true });
+    } catch (ex) {
+      if (dir === rootDir) {
+        throw ex;
+      }
+      return;
+    }
 
-      for (const entry of entries) {
-        const fullPath = join(dir, entry.name);
+    for (const entry of entries) {
+      const fullPath = join(dir, entry.name);
 
-        if (entry.isDirectory()) {
-          if (ignoreDirectories && ignoreDirectories.includes(fullPath)) {
-            continue;
-          }
-          await walk(fullPath);
-        } else if (entry.isFile()) {
+      if (entry.isDirectory()) {
+        if (ignoreDirectories && ignoreDirectories.includes(fullPath)) {
+          continue;
+        }
+        await walk(fullPath);
+      } else if (entry.isFile()) {
+        try {
           const info = await readFileInfo(fullPath, getHash);
 
           if (normalizedExtensions && normalizedExtensions.length > 0) {
@@ -102,11 +111,9 @@ export async function listFilesRecursive(
           }
 
           result.push(info);
+        } catch {
+          // skip files that cannot be read
         }
-      }
-    } catch (ex) {
-      if (dir === rootDir) {
-        throw ex;
       }
     }
   }
@@ -117,29 +124,31 @@ export async function listFilesRecursive(
 }
 
 // Recursively list all file paths under a directory without reading file metadata.
-// Unreadable sub-directories are skipped; an unreadable root directory rejects.
+// An unreadable root directory rejects; unreadable sub-directories are skipped.
 export async function listFilePathsRecursive(rootDir: string, ignoreDirectories?: string[]): Promise<string[]> {
   const result: string[] = [];
 
   async function walk(dir: string): Promise<void> {
+    let entries: Dirent[];
     try {
-      const entries = await fs.readdir(dir, { withFileTypes: true });
-
-      for (const entry of entries) {
-        const fullPath = join(dir, entry.name);
-
-        if (entry.isDirectory()) {
-          if (ignoreDirectories && ignoreDirectories.includes(fullPath)) {
-            continue;
-          }
-          await walk(fullPath);
-        } else if (entry.isFile()) {
-          result.push(fullPath);
-        }
-      }
+      entries = await fs.readdir(dir, { withFileTypes: true });
     } catch (ex) {
       if (dir === rootDir) {
         throw ex;
+      }
+      return;
+    }
+
+    for (const entry of entries) {
+      const fullPath = join(dir, entry.name);
+
+      if (entry.isDirectory()) {
+        if (ignoreDirectories && ignoreDirectories.includes(fullPath)) {
+          continue;
+        }
+        await walk(fullPath);
+      } else if (entry.isFile()) {
+        result.push(fullPath);
       }
     }
   }
