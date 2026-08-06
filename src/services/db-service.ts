@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3';
-import type { Database as DatabaseType } from 'better-sqlite3';
+import type { Database as DatabaseType, Statement } from 'better-sqlite3';
 import type { FileEntry, FileRecord } from '../types/file-types';
 
 type EntryRow = {
@@ -12,17 +12,34 @@ type EntryRow = {
   path: string;
 };
 
+export type DuplicateStats = {
+  duplicateGroups: number;
+  duplicateFiles: number;
+};
+
 function escapeLike(value: string): string {
   return value.replace(/[\\%_]/g, (ch) => `\\${ch}`);
 }
 
 export class DbService {
   private db: DatabaseType;
+  private insertEntryStmt!: Statement;
+  private insertRecordStmt!: Statement;
+  private selectAllEntriesStmt!: Statement;
+  private selectEntriesByDirStmt!: Statement;
+  private deleteEntryByIdStmt!: Statement;
+  private deleteEntryByPathStmt!: Statement;
+  private deleteAllRecordsStmt!: Statement;
+  private dedupStmt!: Statement;
+  private lastInsertRowidStmt!: Statement;
+  private duplicateGroupsStmt!: Statement;
+  private duplicateFilesStmt!: Statement;
 
   constructor(dbPath: string) {
     this.db = new Database(dbPath);
     this.db.pragma('journal_mode = WAL');
     this.createTables();
+    this.prepareStatements();
   }
 
   close() {
@@ -75,8 +92,8 @@ export class DbService {
     this.db.prepare(`CREATE INDEX IF NOT EXISTS idx_records_hash ON records (hash)`).run();
   }
 
-  insertFileInfo(fileInfo: FileEntry) {
-    const insertSql = this.db.prepare(
+  private prepareStatements() {
+    this.insertEntryStmt = this.db.prepare(
       `INSERT INTO entries (size, directory, extension, filename, birthtime, hash, path)
        VALUES (@size, @directory, @extension, @filename, @birthtime, @hash, @path)
        ON CONFLICT(path) DO UPDATE SET
@@ -87,19 +104,8 @@ export class DbService {
          filename = excluded.filename,
          directory = excluded.directory`,
     );
-    insertSql.run({
-      size: fileInfo.size,
-      directory: fileInfo.directory,
-      extension: fileInfo.extension,
-      filename: fileInfo.filename,
-      birthtime: fileInfo.birthtime.toISOString(),
-      hash: fileInfo.hash ?? null,
-      path: fileInfo.path,
-    });
-  }
 
-  insertFileRecord(fileRecord: FileRecord) {
-    const insertSql = this.db.prepare(
+    this.insertRecordStmt = this.db.prepare(
       `INSERT INTO records (filename, hash, count, directories, size, extension)
        VALUES (@filename, @hash, @count, @directories, @size, @extension)
        ON CONFLICT(filename, hash) DO UPDATE SET
@@ -108,7 +114,60 @@ export class DbService {
          size = excluded.size,
          extension = excluded.extension`,
     );
-    insertSql.run({
+
+    this.selectAllEntriesStmt = this.db.prepare(
+      `SELECT size, directory, extension, filename, birthtime, hash, path FROM entries`,
+    );
+
+    this.selectEntriesByDirStmt = this.db.prepare(
+      `SELECT size, directory, extension, filename, birthtime, hash, path
+       FROM entries
+       WHERE directory = ? OR directory LIKE ? ESCAPE '\\' OR directory LIKE ? ESCAPE '\\'`,
+    );
+
+    this.deleteEntryByIdStmt = this.db.prepare(`DELETE FROM entries WHERE id = ?`);
+    this.deleteEntryByPathStmt = this.db.prepare(`DELETE FROM entries WHERE path = ?`);
+    this.deleteAllRecordsStmt = this.db.prepare(`DELETE FROM records`);
+
+    this.dedupStmt = this.db.prepare(
+      `select hash,
+              filename,
+              size,
+              extension,
+              cast(json_group_array(distinct directory) as varchar) as directories,
+              count(*)                             as row_count
+       from entries
+       group by hash, filename, size, extension
+       order by filename;
+      `,
+    );
+
+    this.lastInsertRowidStmt = this.db.prepare(`SELECT last_insert_rowid() AS rowid`);
+    this.duplicateGroupsStmt = this.db.prepare(`SELECT COUNT(*) AS n FROM records WHERE count > 1`);
+    this.duplicateFilesStmt = this.db.prepare(`SELECT COALESCE(SUM(count - 1), 0) AS n FROM records WHERE count > 1`);
+  }
+
+  insertFileInfo(fileInfo: FileEntry): 'inserted' | 'updated' {
+    // An INSERT advances last_insert_rowid (AUTOINCREMENT ids are strictly
+    // increasing); an ON CONFLICT DO UPDATE leaves it unchanged.
+    const before = this.lastInsertRowidStmt.get() as { rowid: number };
+
+    this.insertEntryStmt.run({
+      size: fileInfo.size,
+      directory: fileInfo.directory,
+      extension: fileInfo.extension,
+      filename: fileInfo.filename,
+      birthtime: fileInfo.birthtime.toISOString(),
+      hash: fileInfo.hash ?? null,
+      path: fileInfo.path,
+    });
+
+    const after = this.lastInsertRowidStmt.get() as { rowid: number };
+    return before.rowid === after.rowid ? 'updated' : 'inserted';
+  }
+
+  insertFileRecord(fileRecord: FileRecord) {
+    this.insertRecordStmt.run({
       filename: fileRecord.filename,
       hash: fileRecord.hash,
       count: fileRecord.count,
@@ -121,20 +180,9 @@ export class DbService {
   updateFileRecords() {
     // Rebuild from scratch so records whose (filename, hash) no longer exists in
     // entries (e.g. after a resync removed the underlying files) are dropped.
-    this.db.prepare('DELETE FROM records').run();
+    this.deleteAllRecordsStmt.run();
 
-    const dedupSql = `select hash,
-              filename,
-              size,
-              extension,
-              cast(json_group_array(distinct directory) as varchar) as directories,
-              count(*)                             as row_count
-       from entries
-       group by hash, filename, size, extension
-       order by filename;
-      `;
-
-    const rows = this.db.prepare(dedupSql).all() as {
+    const rows = this.dedupStmt.all() as {
       hash: string;
       filename: string;
       directories: string;
@@ -159,9 +207,14 @@ export class DbService {
     }
   }
 
+  getDuplicateStats(): DuplicateStats {
+    const groups = this.duplicateGroupsStmt.get() as { n: number };
+    const files = this.duplicateFilesStmt.get() as { n: number };
+    return { duplicateGroups: groups.n, duplicateFiles: files.n };
+  }
+
   getFileEntries() {
-    const selectSql = `SELECT size, directory, extension, filename, birthtime, hash, path FROM entries`;
-    const rows = this.db.prepare(selectSql).all() as EntryRow[];
+    const rows = this.selectAllEntriesStmt.all() as EntryRow[];
     return rows.map((row) => this.mapEntry(row));
   }
 
@@ -170,21 +223,16 @@ export class DbService {
     // separator. Wildcard characters in the directory name are escaped so they are
     // not treated as LIKE patterns. Both '/' and '\' separators are handled.
     const escaped = escapeLike(directory);
-    const selectSql = `SELECT size, directory, extension, filename, birthtime, hash, path
-       FROM entries
-       WHERE directory = ? OR directory LIKE ? ESCAPE '\\' OR directory LIKE ? ESCAPE '\\'`;
-    const rows = this.db.prepare(selectSql).all(directory, `${escaped}/%`, `${escaped}\\${'\\'}%`) as EntryRow[];
+    const rows = this.selectEntriesByDirStmt.all(directory, `${escaped}/%`, `${escaped}\\${'\\'}%`) as EntryRow[];
     return rows.map((row) => this.mapEntry(row));
   }
 
   deleteFileEntryById(id: number) {
-    const deleteSql = `DELETE FROM entries WHERE id = ?`;
-    this.db.prepare(deleteSql).run(id);
+    this.deleteEntryByIdStmt.run(id);
   }
 
   deleteFileEntryByPath(path: string) {
-    const deleteSql = `DELETE FROM entries WHERE path = ?`;
-    this.db.prepare(deleteSql).run(path);
+    this.deleteEntryByPathStmt.run(path);
   }
 
   private mapEntry(row: EntryRow): FileEntry {

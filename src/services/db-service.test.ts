@@ -483,4 +483,102 @@ describe('DbService', () => {
 
     db.close();
   });
+
+  it('reports inserted vs updated for upserts', () => {
+    const service = openService();
+
+    const original: FileEntry = {
+      size: 123,
+      directory: '/tmp',
+      extension: '.png',
+      path: '/tmp/foo.png',
+      filename: 'foo.png',
+      birthtime: new Date('2025-01-01T00:00:00.000Z'),
+      hash: 'abc123',
+    };
+
+    expect(service.insertFileInfo(original)).toBe('inserted');
+
+    const updated: FileEntry = {
+      ...original,
+      size: 456,
+      hash: 'new-hash',
+    };
+
+    expect(service.insertFileInfo(updated)).toBe('updated');
+
+    // A third call that changes nothing still counts as 'updated'
+    expect(service.insertFileInfo(updated)).toBe('updated');
+  });
+
+  it('getDuplicateStats counts duplicate groups and duplicate files', () => {
+    const service = openService();
+
+    const entry1: FileEntry = {
+      size: 100,
+      directory: '/tmp/a',
+      extension: '.png',
+      path: '/tmp/a/foo.png',
+      filename: 'foo.png',
+      birthtime: new Date('2025-01-01T00:00:00.000Z'),
+      hash: 'hash-1',
+    };
+
+    const entry2: FileEntry = {
+      size: 100,
+      directory: '/tmp/b',
+      extension: '.png',
+      path: '/tmp/b/foo.png',
+      filename: 'foo.png',
+      birthtime: new Date('2025-01-02T00:00:00.000Z'),
+      hash: 'hash-1',
+    };
+
+    const entry3: FileEntry = {
+      size: 100,
+      directory: '/tmp/c',
+      extension: '.png',
+      path: '/tmp/c/foo.png',
+      filename: 'foo.png',
+      birthtime: new Date('2025-01-03T00:00:00.000Z'),
+      hash: 'hash-1',
+    };
+
+    const other: FileEntry = {
+      size: 200,
+      directory: '/tmp/d',
+      extension: '.png',
+      path: '/tmp/d/bar.png',
+      filename: 'bar.png',
+      birthtime: new Date('2025-01-04T00:00:00.000Z'),
+      hash: 'hash-2',
+    };
+
+    service.insertFileInfo(entry1);
+    service.insertFileInfo(entry2);
+    service.insertFileInfo(entry3);
+    service.insertFileInfo(other);
+    service.updateFileRecords();
+
+    expect(service.getDuplicateStats()).toEqual({ duplicateGroups: 1, duplicateFiles: 2 });
+  });
+
+  it('getDuplicateStats returns zeroes when there are no duplicate groups', () => {
+    const service = openService();
+
+    const entry: FileEntry = {
+      size: 100,
+      directory: '/tmp/a',
+      extension: '.png',
+      path: '/tmp/a/solo.png',
+      filename: 'solo.png',
+      birthtime: new Date('2025-01-01T00:00:00.000Z'),
+      hash: 'hash-1',
+    };
+
+    service.insertFileInfo(entry);
+    service.updateFileRecords();
+
+    expect(service.getDuplicateStats()).toEqual({ duplicateGroups: 0, duplicateFiles: 0 });
+  });
 });
