@@ -12,6 +12,8 @@ export class ProgressEmitter implements ProgressSink {
 
   on(listener: ProgressListener): () => void {
     this.emitter.on('progress', listener);
-    return () => this.emitter.off('progress', listener);
+    return () => {
+      this.emitter.off('progress', listener);
+    };
   }
 }

@@ -246,6 +246,14 @@ listener side — a typed `on(listener)` over `node:events` — so phases emit v
 `phases/` free of any dependency on `output/`; tests and Electron can substitute
 a fake `ProgressSink` freely. Event shapes cannot be typo'd.
 
+**Subscriber contract:** `emitProgress` is synchronous and dispatches to all
+listeners; a listener that throws propagates out of the emit site (standard
+`node:events` behavior) and would fail the run. Subscribers — `CliReporter` and
+future Electron adapters — must not throw. This is a deliberate contract, not a
+bug: a failing subscriber surfaces loudly rather than silently corrupting a
+scan/resync. `on(listener)` returns an unsubscribe function that only detaches
+that one listener.
+
 Phases emit these instead of calling `reporter.progress(...)`. `currentFile` is
 the absolute path — useful to Electron; display formatting stays in the adapter.
 `filesProcessed` is a monotonically increasing counter of files touched by the

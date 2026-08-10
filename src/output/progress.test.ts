@@ -24,6 +24,20 @@ describe('ProgressEmitter', () => {
     expect(listener).not.toHaveBeenCalled();
   });
 
+  it('unsubscribing one listener does not affect the others', () => {
+    const emitter = new ProgressEmitter();
+    const unsubscribed = vi.fn();
+    const kept = vi.fn();
+    const off = emitter.on(unsubscribed);
+    emitter.on(kept);
+    off();
+
+    emitter.emitProgress({ type: 'directoryStart', phase: 'scan', directory: '/tmp/pics' });
+
+    expect(unsubscribed).not.toHaveBeenCalled();
+    expect(kept).toHaveBeenCalledTimes(1);
+  });
+
   it('is usable through the ProgressSink emit-only view', () => {
     const emitter = new ProgressEmitter();
     const listener = vi.fn();
