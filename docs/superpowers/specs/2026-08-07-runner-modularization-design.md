@@ -264,13 +264,21 @@ CLI output stays byte-for-byte identical.
   still running, `totalFiles` is `null`. When the walk of a directory completes
   and its `FileEntry[]` is about to be written, a `counts` event fires with the
   cumulative `filesProcessed` and cumulative `totalFiles`.
-- **resync (`checkActualFile` mode):** `filesProcessed` increments per entry
-  existence-checked; the total is the `getFileEntriesByDirectory` row count for
-  that directory, known up front, so `counts` fires at directory start with the
-  determinate total.
-- **resync (listing mode):** like scan — `filesProcessed` increments per path
-  listed, `totalFiles` is `null` until the listing completes, then `counts`
-  fires.
+- **resync (`checkActualFile` mode):** the total for a directory is its
+  `getFileEntriesByDirectory` row count, known up front. A `counts` event fires
+  at directory start with the cumulative totals, then one `file` event per entry
+  existence-checked.
+- **resync (listing mode):** two passes per directory, matching the current
+  per-entry progress during **both** listing (`runner.ts:167-169`) and
+  verification (`runner.ts:178`):
+  - _listing pass:_ one `file` event per path listed, `totalFiles` `null`;
+  - when the listing completes, `totalFiles` for the directory becomes
+    `listed + entries` (both known then) and a `counts` event fires with the
+    cumulative totals;
+  - _verification pass:_ one `file` event per DB entry checked, with
+    `totalFiles` set to the cumulative total.
+    After the verification pass the phase's `filesProcessed` equals its
+    `totalFiles` (no overrun).
 - **records:** synchronous and fast; emits only `phaseStart`, no `file`/`counts`
   events. (The summary carries its own duplicate counts.)
 
