@@ -47,6 +47,12 @@ describe('ScanPhase', () => {
     await removeDirRecursive(rootDir);
   });
 
+  it('is enabled only when process_directories is true', () => {
+    const phase = new ScanPhase();
+    expect(phase.enabled(makeConfig(join(rootDir, 'src')))).toBe(true);
+    expect(phase.enabled({ ...makeConfig(join(rootDir, 'src')), process_directories: false })).toBe(false);
+  });
+
   it('lists matching files, writes entries, and reports counters and events', async () => {
     await createFile(rootDir, 'src/a.txt', 'hello');
     await createFile(rootDir, 'src/sub/b.txt', 'world');
@@ -140,5 +146,31 @@ describe('ScanPhase', () => {
       }),
     ).rejects.toBeInstanceOf(RunAbortedError);
     expect(db.insertFileInfo).not.toHaveBeenCalled();
+  });
+
+  it('stops writing entries when the signal aborts between the walk and the insert loop', async () => {
+    await createFile(rootDir, 'src/a.txt', 'hello');
+    await createFile(rootDir, 'src/b.txt', 'world');
+
+    const controller = new AbortController();
+    const db = {
+      insertFileInfo: vi.fn(() => {
+        controller.abort();
+        return 'inserted';
+      }),
+    };
+
+    await expect(
+      new ScanPhase().run({
+        config: makeConfig(join(rootDir, 'src')),
+        db: db as unknown as DbService,
+        reporter: asReporter(makeMockReporter()),
+        progress: asProgress(makeMockProgress()),
+        marker: '[1/1]',
+        signal: controller.signal,
+      }),
+    ).rejects.toBeInstanceOf(RunAbortedError);
+    // the walk completed (counts event emitted) but only one write happened
+    expect(db.insertFileInfo).toHaveBeenCalledTimes(1);
   });
 });
