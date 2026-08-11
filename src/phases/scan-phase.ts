@@ -63,12 +63,8 @@ export class ScanPhase implements Phase {
         ctx.progress.emitProgress({ type: 'counts', phase: 'scan', filesProcessed, totalFiles: filesProcessed });
 
         filesScanned += files.length;
-        for (const file of files) {
-          throwIfAborted(ctx.signal);
-          const status = ctx.db.insertFileInfo(file);
-          ctx.reporter.debug(`Upserted (${status}) ${file.path}`);
-          entriesUpserted += 1;
-        }
+        const { inserted, updated } = ctx.db.insertFileInfos(files);
+        entriesUpserted += inserted + updated;
       },
     );
 

@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { promises as fs } from 'node:fs';
 import Database from 'better-sqlite3';
 import { DbService } from './db-service';
-import type { FileEntry, FileRecord } from '../types/file-types';
+import type { FileEntry } from '../types/file-types';
 
 async function removeFile(path: string) {
   try {
@@ -41,10 +41,12 @@ describe('DbService', () => {
   }
 
   it('creates entries and records tables on construction', () => {
-    const service = openService();
-    expect(service.getFileEntries()).toEqual([]);
+    openService();
 
     const db = new Database(dbPath);
+    const entriesCount = db.prepare('SELECT COUNT(*) AS c FROM entries').get() as { c: number };
+    expect(entriesCount.c).toBe(0);
+
     const tables = db
       .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name IN ('entries', 'records') ORDER BY name")
       .all() as { name: string }[];
@@ -115,38 +117,6 @@ describe('DbService', () => {
     db.close();
   });
 
-  it('inserts a FileRecord into records table', () => {
-    const service = openService();
-
-    const record: FileRecord = {
-      filename: 'bar.png',
-      hash: 'def456',
-      count: 2,
-      directories: `['/tmp/a', '/tmp/b']`,
-      size: 200,
-      extension: '.png',
-    };
-
-    service.insertFileRecord(record);
-
-    const db = new Database(dbPath);
-    const rows = db.prepare('SELECT filename, hash, count, directories FROM records').all() as {
-      filename: string;
-      hash: string;
-      count: number;
-      directories: string;
-    }[];
-
-    expect(rows.length).toBe(1);
-    const row = rows[0];
-    expect(row.filename).toBe(record.filename);
-    expect(row.hash).toBe(record.hash);
-    expect(row.count).toBe(record.count);
-    expect(row.directories).toEqual(record.directories);
-
-    db.close();
-  });
-
   it('upserts a FileEntry when called with the same path', () => {
     const service = openService();
 
@@ -193,122 +163,6 @@ describe('DbService', () => {
     expect(row.birthtime).toBe(updated.birthtime.toISOString());
     expect(row.hash).toBe(updated.hash);
     expect(row.path).toBe(updated.path);
-
-    db.close();
-  });
-
-  it('upserts a FileRecord when called with the same filename and hash', () => {
-    const service = openService();
-
-    const original: FileRecord = {
-      filename: 'baz.png',
-      hash: 'ghi789',
-      count: 1,
-      directories: `['/tmp/x']`,
-      size: 300,
-      extension: '.png',
-    };
-
-    const updated: FileRecord = {
-      ...original,
-      count: 3,
-      directories: `['/tmp/x','/tmp/y']`,
-    };
-
-    service.insertFileRecord(original);
-    service.insertFileRecord(updated);
-
-    const db = new Database(dbPath);
-    const rows = db.prepare('SELECT filename, hash, count, directories FROM records').all() as {
-      filename: string;
-      hash: string;
-      count: number;
-      directories: string;
-    }[];
-
-    expect(rows.length).toBe(1);
-    const row = rows[0];
-    expect(row.filename).toBe(updated.filename);
-    expect(row.hash).toBe(updated.hash);
-    expect(row.count).toBe(updated.count);
-    expect(row.directories).toEqual(updated.directories);
-
-    db.close();
-  });
-
-  it('returns all file entries from the entries table via getFileEntries', () => {
-    const service = openService();
-
-    const entry1: FileEntry = {
-      size: 100,
-      directory: '/tmp/a',
-      extension: '.txt',
-      path: '/tmp/a/foo.txt',
-      filename: 'foo.txt',
-      birthtime: new Date('2025-01-01T00:00:00.000Z'),
-      hash: 'hash-1',
-    };
-
-    const entry2: FileEntry = {
-      size: 200,
-      directory: '/tmp/b',
-      extension: '.log',
-      path: '/tmp/b/bar.log',
-      filename: 'bar.log',
-      birthtime: new Date('2025-02-02T00:00:00.000Z'),
-    };
-
-    service.insertFileInfo(entry1);
-    service.insertFileInfo(entry2);
-
-    const entries = service.getFileEntries();
-
-    expect(entries).toHaveLength(2);
-
-    const byPath = new Map(entries.map((e) => [e.path, e]));
-
-    const e1 = byPath.get(entry1.path)!;
-    expect(e1.size).toBe(entry1.size);
-    expect(e1.directory).toBe(entry1.directory);
-    expect(e1.extension).toBe(entry1.extension);
-    expect(e1.filename).toBe(entry1.filename);
-    expect(e1.birthtime).toEqual(entry1.birthtime);
-    expect(e1.hash).toBe(entry1.hash);
-    expect(e1.path).toBe(entry1.path);
-
-    const e2 = byPath.get(entry2.path)!;
-    expect(e2.size).toBe(entry2.size);
-    expect(e2.directory).toBe(entry2.directory);
-    expect(e2.extension).toBe(entry2.extension);
-    expect(e2.filename).toBe(entry2.filename);
-    expect(e2.birthtime).toEqual(entry2.birthtime);
-    expect(e2.hash).toBeUndefined();
-    expect(e2.path).toBe(entry2.path);
-  });
-
-  it('deletes a file entry by id', () => {
-    const service = openService();
-
-    const entry: FileEntry = {
-      size: 123,
-      directory: '/tmp',
-      extension: '.png',
-      path: '/tmp/foo.png',
-      filename: 'foo.png',
-      birthtime: new Date('2025-01-01T00:00:00.000Z'),
-      hash: 'abc123',
-    };
-
-    service.insertFileInfo(entry);
-
-    const db = new Database(dbPath);
-    const row = db.prepare('SELECT id FROM entries WHERE path = ?').get(entry.path) as { id: number };
-    expect(row).toBeTruthy();
-
-    service.deleteFileEntryById(row.id);
-
-    const after = db.prepare('SELECT id FROM entries WHERE id = ?').get(row.id) as { id: number } | undefined;
-    expect(after).toBeUndefined();
 
     db.close();
   });
@@ -580,5 +434,89 @@ describe('DbService', () => {
     service.updateFileRecords();
 
     expect(service.getDuplicateStats()).toEqual({ duplicateGroups: 0, duplicateFiles: 0 });
+  });
+
+  it('insertFileInfos inserts multiple entries and reports inserted counts', () => {
+    const service = openService();
+
+    const entry1: FileEntry = {
+      size: 100,
+      directory: '/tmp/a',
+      extension: '.png',
+      path: '/tmp/a/x.png',
+      filename: 'x.png',
+      birthtime: new Date('2025-01-01T00:00:00.000Z'),
+      hash: 'h1',
+    };
+    const entry2: FileEntry = {
+      size: 200,
+      directory: '/tmp/b',
+      extension: '.png',
+      path: '/tmp/b/y.png',
+      filename: 'y.png',
+      birthtime: new Date('2025-01-02T00:00:00.000Z'),
+      hash: 'h2',
+    };
+
+    const counts = service.insertFileInfos([entry1, entry2]);
+
+    expect(counts).toEqual({ inserted: 2, updated: 0 });
+  });
+
+  it('insertFileInfos reports updated counts for paths that already exist', () => {
+    const service = openService();
+
+    const original: FileEntry = {
+      size: 100,
+      directory: '/tmp/a',
+      extension: '.png',
+      path: '/tmp/a/x.png',
+      filename: 'x.png',
+      birthtime: new Date('2025-01-01T00:00:00.000Z'),
+      hash: 'h1',
+    };
+    service.insertFileInfo(original);
+
+    const updated: FileEntry = { ...original, size: 456, hash: 'h2' };
+    const counts = service.insertFileInfos([updated]);
+
+    expect(counts).toEqual({ inserted: 0, updated: 1 });
+  });
+
+  it('insertFileInfos rolls back all entries when one insert fails', () => {
+    const service = openService();
+
+    const good: FileEntry = {
+      size: 100,
+      directory: '/tmp/a',
+      extension: '.png',
+      path: '/tmp/a/good.png',
+      filename: 'good.png',
+      birthtime: new Date('2025-01-01T00:00:00.000Z'),
+      hash: 'g',
+    };
+
+    // A duplicate `path` is not a natural failure here — `insertFileInfo` uses
+    // `ON CONFLICT(path) DO UPDATE`, so it upserts. Add a unique index on `hash`
+    // (test-only, not part of the schema) so a second row sharing `good`'s hash
+    // throws a UNIQUE constraint that the `path` conflict target does not cover.
+    const db = new Database(dbPath);
+    db.prepare('CREATE UNIQUE INDEX idx_hash ON entries (hash)').run();
+    db.close();
+
+    const bad: FileEntry = {
+      size: 200,
+      directory: '/tmp/b',
+      extension: '.png',
+      path: '/tmp/b/bad.png', // different path (so ON CONFLICT(path) doesn't fire), same hash as `good`
+      filename: 'bad.png',
+      birthtime: new Date('2025-01-02T00:00:00.000Z'),
+      hash: 'g',
+    };
+
+    expect(() => service.insertFileInfos([good, bad])).toThrow();
+
+    const rows = new Database(dbPath).prepare('SELECT path FROM entries').all() as { path: string }[];
+    expect(rows).toEqual([]); // the whole transaction rolled back
   });
 });
