@@ -8,8 +8,6 @@ export type MockReporter = {
   info: Mock;
   warn: Mock;
   error: Mock;
-  progress: Mock;
-  stopProgress: Mock;
   printSummary: Mock;
 };
 
@@ -19,8 +17,6 @@ export function makeMockReporter(): MockReporter {
     info: vi.fn(),
     warn: vi.fn(),
     error: vi.fn(),
-    progress: vi.fn(),
-    stopProgress: vi.fn(),
     printSummary: vi.fn(),
   };
 }
