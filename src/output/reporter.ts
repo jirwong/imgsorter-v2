@@ -1,6 +1,9 @@
+import { relative } from 'node:path';
 import { createSpinner } from 'nanospinner';
 import type { Spinner } from 'nanospinner';
+import type { ProgressEmitter } from './progress';
 import type { RunSummary } from '../types/run-summary';
+import type { PhaseName } from '../types/run-summary';
 
 export interface Reporter {
   debug(msg: string): void;
@@ -16,6 +19,12 @@ export type ReporterOptions = {
   quiet: boolean;
   verbose: boolean;
   progress: boolean;
+};
+
+const PHASE_START_LABELS: Record<PhaseName, string> = {
+  scan: 'Scanning…',
+  resync: 'Resyncing…',
+  records: 'Rebuilding records…',
 };
 
 export class CliReporter implements Reporter {
@@ -65,6 +74,27 @@ export class CliReporter implements Reporter {
       this.spinner.stop();
       this.spinner = null;
     }
+  }
+
+  subscribe(progress: ProgressEmitter): void {
+    progress.on((event) => {
+      switch (event.type) {
+        case 'phaseStart':
+          this.info(`${event.marker} ${PHASE_START_LABELS[event.phase]}`);
+          this.progress(`${event.marker} ${PHASE_START_LABELS[event.phase]}`);
+          break;
+        case 'directoryStart':
+          this.progress(`${event.phase === 'scan' ? 'Scanning' : 'Resyncing'} ${event.directory}`);
+          break;
+        case 'file':
+          this.progress(
+            `${event.phase === 'scan' ? 'Scanning' : 'Resyncing'} ${event.directory} → ${relative(event.directory, event.currentFile)}`,
+          );
+          break;
+        case 'counts':
+          break;
+      }
+    });
   }
 
   printSummary(summary: RunSummary): void {
