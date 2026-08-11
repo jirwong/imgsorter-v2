@@ -27,6 +27,12 @@ const PHASE_START_LABELS: Record<PhaseName, string> = {
   records: 'Rebuilding records…',
 };
 
+const PHASE_VERBS: Record<PhaseName, string> = {
+  scan: 'Scanning',
+  resync: 'Resyncing',
+  records: 'Rebuilding',
+};
+
 export class CliReporter implements Reporter {
   private spinner: Spinner | null = null;
 
@@ -84,15 +90,19 @@ export class CliReporter implements Reporter {
           this.progress(`${event.marker} ${PHASE_START_LABELS[event.phase]}`);
           break;
         case 'directoryStart':
-          this.progress(`${event.phase === 'scan' ? 'Scanning' : 'Resyncing'} ${event.directory}`);
+          this.progress(`${PHASE_VERBS[event.phase]} ${event.directory}`);
           break;
         case 'file':
           this.progress(
-            `${event.phase === 'scan' ? 'Scanning' : 'Resyncing'} ${event.directory} → ${relative(event.directory, event.currentFile)}`,
+            `${PHASE_VERBS[event.phase]} ${event.directory} → ${relative(event.directory, event.currentFile)}`,
           );
           break;
         case 'counts':
           break;
+        default: {
+          const exhaustiveCheck: never = event;
+          throw new Error(`Unhandled progress event: ${exhaustiveCheck}`);
+        }
       }
     });
   }
