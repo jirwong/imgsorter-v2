@@ -13,7 +13,7 @@ export interface Phase {
 export type PhaseContext = {
   config: RunConfiguration;
   db: DbService;
-  reporter: Reporter; // output only: debug/info/warn
+  reporter: Reporter; // output only: debug/info/warn (Reporter slims to this in the final swap)
   progress: ProgressSink; // emit-only view of the progress channel
   marker: string; // "[n/total]" computed by the Runner
   signal: AbortSignal; // checked at safe points; abort throws RunAbortedError

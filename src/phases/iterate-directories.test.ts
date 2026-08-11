@@ -63,6 +63,17 @@ describe('iterateDirectories', () => {
     await iterateDirectories('resync', { config, reporter, progress, signal: new AbortController().signal }, body);
 
     expect(body).toHaveBeenCalledTimes(2);
+    expect(progress.emitProgress).toHaveBeenCalledTimes(2);
+    expect(progress.emitProgress).toHaveBeenNthCalledWith(1, {
+      type: 'directoryStart',
+      phase: 'resync',
+      directory: '/a',
+    });
+    expect(progress.emitProgress).toHaveBeenNthCalledWith(2, {
+      type: 'directoryStart',
+      phase: 'resync',
+      directory: '/b',
+    });
     expect(reporter.info).toHaveBeenCalledWith('Ignoring directory: /ignored');
   });
 
