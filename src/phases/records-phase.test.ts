@@ -87,5 +87,6 @@ describe('RecordsPhase', () => {
       }),
     ).rejects.toBeInstanceOf(RunAbortedError);
     expect(db.updateFileRecords as Mock).not.toHaveBeenCalled();
+    expect(db.getDuplicateStats as Mock).not.toHaveBeenCalled();
   });
 });

@@ -10,10 +10,11 @@ export class RecordsPhase implements Phase {
   }
 
   async run(ctx: PhaseContext): Promise<PhaseResult> {
+    throwIfAborted(ctx.signal);
+
     const start = performance.now();
     ctx.progress.emitProgress({ type: 'phaseStart', phase: 'records', marker: ctx.marker });
 
-    throwIfAborted(ctx.signal);
     ctx.db.updateFileRecords();
     const stats = ctx.db.getDuplicateStats();
 
