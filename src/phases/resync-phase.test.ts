@@ -108,12 +108,13 @@ describe('ResyncPhase', () => {
       getFileEntriesByDirectory: vi.fn(() => [makeEntry(join(src, 'a.txt')), makeEntry(stale)]),
       deleteFileEntryByPath: vi.fn(),
     };
+    const progress = makeMockProgress();
 
     const result = await new ResyncPhase().run({
       config: makeConfig(src, false),
       db: db as unknown as DbService,
       reporter: asReporter(makeMockReporter()),
-      progress: asProgress(makeMockProgress()),
+      progress: asProgress(progress),
       marker: '[1/2]',
       signal: new AbortController().signal,
     });
@@ -125,6 +126,46 @@ describe('ResyncPhase', () => {
     expect(result.staleRemoved).toBe(1);
     expect(db.deleteFileEntryByPath).toHaveBeenCalledWith(stale);
     expect(db.deleteFileEntryByPath).not.toHaveBeenCalledWith(join(src, 'a.txt'));
+
+    // two-pass ordering: listing-pass file events carry totalFiles: null ...
+    expect(progress.emitProgress).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'file',
+        phase: 'resync',
+        directory: src,
+        currentFile: join(src, 'a.txt'),
+        filesProcessed: 1,
+        totalFiles: null,
+      }),
+    );
+    expect(progress.emitProgress).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'file',
+        phase: 'resync',
+        directory: src,
+        currentFile: join(src, 'b.txt'),
+        filesProcessed: 2,
+        totalFiles: null,
+      }),
+    );
+    // ... then counts fires with the cumulative total (listed + entries) ...
+    expect(progress.emitProgress).toHaveBeenCalledWith({
+      type: 'counts',
+      phase: 'resync',
+      filesProcessed: 2,
+      totalFiles: 4,
+    });
+    // ... and verification-pass file events carry the cumulative total.
+    expect(progress.emitProgress).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'file',
+        phase: 'resync',
+        directory: src,
+        currentFile: stale,
+        filesProcessed: 4,
+        totalFiles: 4,
+      }),
+    );
   });
 
   it('collects a listing error and continues', async () => {
