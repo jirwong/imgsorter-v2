@@ -159,4 +159,30 @@ describe('main', () => {
     const code = await main(['--version']);
     expect(code).toBe(0);
   });
+
+  it('returns 130 when the run is cancelled via SIGINT', async () => {
+    await createFile(rootDir, 'pics/a.txt', 'hello');
+    await fs.writeFile(join(rootDir, 'config.yaml'), makeConfigYaml(rootDir));
+
+    let sigintHandler: (() => void) | undefined;
+    const onceSpy = vi.spyOn(process, 'once');
+    onceSpy.mockImplementation(((event: string, listener: (...args: unknown[]) => void) => {
+      if (event === 'SIGINT') {
+        sigintHandler = listener as () => void;
+      }
+      return process;
+    }) as unknown as typeof process.once);
+
+    try {
+      const promise = main(['--config', join(rootDir, 'config.yaml')]);
+      // main() registers the SIGINT handler synchronously before its first await,
+      // so the spy captures it before we abort.
+      expect(sigintHandler).toBeDefined();
+      sigintHandler!();
+      const code = await promise;
+      expect(code).toBe(130);
+    } finally {
+      onceSpy.mockRestore();
+    }
+  });
 });
