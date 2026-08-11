@@ -1,7 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import type { Mock } from 'vitest';
+import { relative } from 'node:path';
 import { createSpinner } from 'nanospinner';
 import { CliReporter } from './reporter';
+import { ProgressEmitter } from './progress';
 import type { RunSummary } from '../types/run-summary';
 
 vi.mock('nanospinner', () => {
@@ -161,5 +163,87 @@ describe('CliReporter', () => {
 
     expect(consoleLog).not.toHaveBeenCalledWith(expect.stringContaining('files scanned'));
     expect(consoleWarn).toHaveBeenCalledWith('  - Scan C:\\bad: EACCES');
+  });
+
+  describe('subscribe', () => {
+    it('prints the phase marker line then restarts the spinner on phaseStart', () => {
+      const reporter = new CliReporter({ quiet: false, verbose: false, progress: true });
+      const progress = new ProgressEmitter();
+      reporter.subscribe(progress);
+
+      progress.emitProgress({ type: 'phaseStart', phase: 'scan', marker: '[1/3]' });
+
+      expect(consoleLog).toHaveBeenCalledWith('[1/3] Scanning…');
+      // info-then-progress ordering is a contract: the marker line prints before the spinner restarts
+      expect(consoleLog).toHaveBeenCalledBefore(vi.mocked(createSpinner));
+      expect(createSpinner).toHaveBeenCalledWith('[1/3] Scanning…');
+    });
+
+    it('maps phaseStart for resync and records labels', () => {
+      const reporter = new CliReporter({ quiet: false, verbose: false, progress: false });
+      const progress = new ProgressEmitter();
+      reporter.subscribe(progress);
+
+      progress.emitProgress({ type: 'phaseStart', phase: 'resync', marker: '[2/3]' });
+      progress.emitProgress({ type: 'phaseStart', phase: 'records', marker: '[3/3]' });
+
+      expect(consoleLog).toHaveBeenCalledWith('[2/3] Resyncing…');
+      expect(consoleLog).toHaveBeenCalledWith('[3/3] Rebuilding records…');
+    });
+
+    it('maps directoryStart to a Scanning progress line', () => {
+      const reporter = new CliReporter({ quiet: false, verbose: false, progress: true });
+      const progress = new ProgressEmitter();
+      reporter.subscribe(progress);
+
+      progress.emitProgress({ type: 'directoryStart', phase: 'scan', directory: 'C:\\Pics' });
+
+      expect(createSpinner).toHaveBeenCalledWith('Scanning C:\\Pics');
+    });
+
+    it('maps file events to the relative current-file progress line', () => {
+      const reporter = new CliReporter({ quiet: false, verbose: false, progress: true });
+      const progress = new ProgressEmitter();
+      reporter.subscribe(progress);
+
+      progress.emitProgress({
+        type: 'file',
+        phase: 'scan',
+        directory: 'C:\\Pics',
+        currentFile: 'C:\\Pics\\sub\\a.txt',
+        filesProcessed: 1,
+        totalFiles: null,
+      });
+
+      expect(createSpinner).toHaveBeenCalledWith(`Scanning C:\\Pics → ${relative('C:\\Pics', 'C:\\Pics\\sub\\a.txt')}`);
+    });
+
+    it('uses the Resyncing verb for resync file events', () => {
+      const reporter = new CliReporter({ quiet: false, verbose: false, progress: true });
+      const progress = new ProgressEmitter();
+      reporter.subscribe(progress);
+
+      progress.emitProgress({
+        type: 'file',
+        phase: 'resync',
+        directory: 'C:\\Pics',
+        currentFile: 'C:\\Pics\\a.txt',
+        filesProcessed: 1,
+        totalFiles: 2,
+      });
+
+      expect(createSpinner).toHaveBeenCalledWith(`Resyncing C:\\Pics → ${relative('C:\\Pics', 'C:\\Pics\\a.txt')}`);
+    });
+
+    it('ignores counts events', () => {
+      const reporter = new CliReporter({ quiet: false, verbose: false, progress: true });
+      const progress = new ProgressEmitter();
+      reporter.subscribe(progress);
+
+      progress.emitProgress({ type: 'counts', phase: 'scan', filesProcessed: 5, totalFiles: 5 });
+
+      expect(createSpinner).not.toHaveBeenCalled();
+      expect(consoleLog).not.toHaveBeenCalled();
+    });
   });
 });
