@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import Database from 'better-sqlite3';
 import { Runner } from './runner';
+import { RunAbortedError } from './phases/abort';
 import type { RunConfiguration } from './types/configuration';
 
 async function makeTempDir(prefix = 'runner-test-'): Promise<string> {
@@ -40,8 +41,6 @@ type MockReporter = {
   info: Mock;
   warn: Mock;
   error: Mock;
-  progress: Mock;
-  stopProgress: Mock;
   printSummary: Mock;
 };
 
@@ -51,10 +50,22 @@ function makeMockReporter(): MockReporter {
     info: vi.fn(),
     warn: vi.fn(),
     error: vi.fn(),
-    progress: vi.fn(),
-    stopProgress: vi.fn(),
     printSummary: vi.fn(),
   };
+}
+
+type MockProgress = { emitProgress: Mock };
+
+function makeMockProgress(): MockProgress {
+  return { emitProgress: vi.fn() };
+}
+
+function makeDeps(
+  reporter: MockReporter = makeMockReporter(),
+  progress: MockProgress = makeMockProgress(),
+  signal: AbortSignal = new AbortController().signal,
+): { reporter: MockReporter; progress: MockProgress; signal: AbortSignal } {
+  return { reporter, progress, signal };
 }
 
 describe('Runner', () => {
@@ -76,7 +87,7 @@ describe('Runner', () => {
     await createFile(rootDir, 'src2/b.txt', 'same content');
     await createFile(rootDir, 'src/c.txt', 'another');
 
-    const runner = new Runner(makeConfig(dbPath, rootDir), makeMockReporter());
+    const runner = new Runner(makeConfig(dbPath, rootDir), makeDeps());
     const summary = await runner.run();
     runner.close();
 
@@ -110,7 +121,7 @@ describe('Runner', () => {
     await createFile(rootDir, 'src/a.txt', 'hello');
 
     const config = { ...makeConfig(dbPath, join(rootDir, 'src')), process_directories: false };
-    const runner = new Runner(config, makeMockReporter());
+    const runner = new Runner(config, makeDeps());
     const summary = await runner.run();
     runner.close();
 
@@ -126,7 +137,7 @@ describe('Runner', () => {
     await createFile(rootDir, 'src/a.txt', 'hello');
 
     const config = { ...makeConfig(dbPath, join(rootDir, 'src')), update_records: false };
-    const runner = new Runner(config, makeMockReporter());
+    const runner = new Runner(config, makeDeps());
     const summary = await runner.run();
     runner.close();
 
@@ -149,7 +160,7 @@ describe('Runner', () => {
       ...makeConfig(dbPath, join(rootDir, 'src')),
       ignore_directories: [join(rootDir, 'src', 'ignored')],
     };
-    const runner = new Runner(config, makeMockReporter());
+    const runner = new Runner(config, makeDeps());
     const summary = await runner.run();
     runner.close();
 
@@ -167,7 +178,7 @@ describe('Runner', () => {
       ...makeConfig(dbPath, join(rootDir, 'src')),
       ignore_directories: [dirname(ignored)],
     };
-    const runner = new Runner(config, makeMockReporter());
+    const runner = new Runner(config, makeDeps());
     await runner.run();
     runner.close();
 
@@ -182,7 +193,7 @@ describe('Runner', () => {
     await createFile(rootDir, 'src/b.txt', 'bravo');
 
     // Index both files first
-    const runner = new Runner(makeConfig(dbPath, join(rootDir, 'src')), makeMockReporter());
+    const runner = new Runner(makeConfig(dbPath, join(rootDir, 'src')), makeDeps());
     await runner.run();
     runner.close();
 
@@ -194,8 +205,8 @@ describe('Runner', () => {
       resync_directories: true,
       resync_check_actual_file: true,
     };
-    const reporter = makeMockReporter();
-    const resyncRunner = new Runner(resyncConfig, reporter);
+    const progress = makeMockProgress();
+    const resyncRunner = new Runner(resyncConfig, makeDeps(makeMockReporter(), progress));
     const summary = await resyncRunner.run();
     resyncRunner.close();
 
@@ -208,14 +219,16 @@ describe('Runner', () => {
     expect(summary.staleRemoved).toBe(1);
     expect(summary.phases.map((p) => p.name)).toEqual(['resync', 'records']);
     // resync + records enabled -> resync marker is [1/2]
-    expect(reporter.progress).toHaveBeenCalledWith(expect.stringContaining('[1/2]'));
+    expect(progress.emitProgress).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'phaseStart', phase: 'resync', marker: '[1/2]' }),
+    );
   });
 
   it('resyncs against the current directory listing when checkActualFile is false', async () => {
     const fileToDelete = await createFile(rootDir, 'src/a.txt', 'alpha');
     await createFile(rootDir, 'src/b.txt', 'bravo');
 
-    const runner = new Runner(makeConfig(dbPath, join(rootDir, 'src')), makeMockReporter());
+    const runner = new Runner(makeConfig(dbPath, join(rootDir, 'src')), makeDeps());
     await runner.run();
     runner.close();
 
@@ -226,8 +239,7 @@ describe('Runner', () => {
       resync_directories: true,
       resync_check_actual_file: false,
     };
-    const reporter = makeMockReporter();
-    const resyncRunner = new Runner(resyncConfig, reporter);
+    const resyncRunner = new Runner(resyncConfig, makeDeps());
     const summary = await resyncRunner.run();
     resyncRunner.close();
 
@@ -249,7 +261,7 @@ describe('Runner', () => {
       directories: [join(rootDir, 'missing'), join(rootDir, 'src')],
     };
     const reporter = makeMockReporter();
-    const runner = new Runner(config, reporter);
+    const runner = new Runner(config, makeDeps(reporter));
     const summary = await runner.run();
     runner.close();
 
@@ -269,7 +281,7 @@ describe('Runner', () => {
     await createFile(rootDir, 'src/a.txt', 'alpha');
     await createFile(rootDir, 'src/b.txt', 'bravo');
 
-    const runner = new Runner(makeConfig(dbPath, join(rootDir, 'src')), makeMockReporter());
+    const runner = new Runner(makeConfig(dbPath, join(rootDir, 'src')), makeDeps());
     await runner.run();
     runner.close();
 
@@ -281,7 +293,7 @@ describe('Runner', () => {
       directories: [join(rootDir, 'src-missing'), join(rootDir, 'src')],
     };
     const reporter = makeMockReporter();
-    const resyncRunner = new Runner(resyncConfig, reporter);
+    const resyncRunner = new Runner(resyncConfig, makeDeps(reporter));
     const summary = await resyncRunner.run();
     resyncRunner.close();
 
@@ -291,35 +303,49 @@ describe('Runner', () => {
     expect(reporter.warn).toHaveBeenCalledWith(expect.stringContaining('Failed to resync directory'));
   });
 
-  it('numbers phase markers by the enabled phases', async () => {
+  it('emits phase markers for the enabled phases', async () => {
     await createFile(rootDir, 'src/a.txt', 'hello');
 
-    const reporter = makeMockReporter();
-    const runner = new Runner(makeConfig(dbPath, join(rootDir, 'src')), reporter);
+    const progress = makeMockProgress();
+    const runner = new Runner(makeConfig(dbPath, join(rootDir, 'src')), makeDeps(makeMockReporter(), progress));
     await runner.run();
     runner.close();
 
     // makeConfig enables scan + records (no resync) -> markers are [1/2] and [2/2]
-    expect(reporter.info).toHaveBeenCalledWith(expect.stringContaining('[1/2]'));
-    expect(reporter.info).toHaveBeenCalledWith(expect.stringContaining('[2/2]'));
-    expect(reporter.progress).toHaveBeenCalledWith(expect.stringContaining('[1/2]'));
+    expect(progress.emitProgress).toHaveBeenCalledWith({
+      type: 'phaseStart',
+      phase: 'scan',
+      marker: '[1/2]',
+    });
+    expect(progress.emitProgress).toHaveBeenCalledWith({
+      type: 'phaseStart',
+      phase: 'records',
+      marker: '[2/2]',
+    });
   });
 
-  it('updates progress with the current file during scanning', async () => {
+  it('emits file progress with the current file during scanning', async () => {
     await createFile(rootDir, 'src/sub/a.txt', 'hello');
 
-    const reporter = makeMockReporter();
-    const runner = new Runner(makeConfig(dbPath, join(rootDir, 'src')), reporter);
+    const progress = makeMockProgress();
+    const runner = new Runner(makeConfig(dbPath, join(rootDir, 'src')), makeDeps(makeMockReporter(), progress));
     await runner.run();
     runner.close();
 
-    expect(reporter.progress).toHaveBeenCalledWith(`Scanning ${join(rootDir, 'src')} → ${join('sub', 'a.txt')}`);
+    expect(progress.emitProgress).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'file',
+        phase: 'scan',
+        directory: join(rootDir, 'src'),
+        currentFile: join(rootDir, 'src', 'sub', 'a.txt'),
+      }),
+    );
   });
 
-  it('updates progress with the current entry during resync (check actual file)', async () => {
+  it('emits file progress with the current entry during resync (check actual file)', async () => {
     await createFile(rootDir, 'src/a.txt', 'alpha');
 
-    const runner = new Runner(makeConfig(dbPath, join(rootDir, 'src')), makeMockReporter());
+    const runner = new Runner(makeConfig(dbPath, join(rootDir, 'src')), makeDeps());
     await runner.run();
     runner.close();
 
@@ -329,18 +355,25 @@ describe('Runner', () => {
       resync_directories: true,
       resync_check_actual_file: true,
     };
-    const reporter = makeMockReporter();
-    const resyncRunner = new Runner(resyncConfig, reporter);
+    const progress = makeMockProgress();
+    const resyncRunner = new Runner(resyncConfig, makeDeps(makeMockReporter(), progress));
     await resyncRunner.run();
     resyncRunner.close();
 
-    expect(reporter.progress).toHaveBeenCalledWith(`Resyncing ${join(rootDir, 'src')} → ${join('a.txt')}`);
+    expect(progress.emitProgress).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'file',
+        phase: 'resync',
+        directory: join(rootDir, 'src'),
+        currentFile: join(rootDir, 'src', 'a.txt'),
+      }),
+    );
   });
 
-  it('updates progress with the current entry during resync (directory listing)', async () => {
+  it('emits file progress with the current entry during resync (directory listing)', async () => {
     await createFile(rootDir, 'src/a.txt', 'alpha');
 
-    const runner = new Runner(makeConfig(dbPath, join(rootDir, 'src')), makeMockReporter());
+    const runner = new Runner(makeConfig(dbPath, join(rootDir, 'src')), makeDeps());
     await runner.run();
     runner.close();
 
@@ -350,11 +383,36 @@ describe('Runner', () => {
       resync_directories: true,
       resync_check_actual_file: false,
     };
-    const reporter = makeMockReporter();
-    const resyncRunner = new Runner(resyncConfig, reporter);
+    const progress = makeMockProgress();
+    const resyncRunner = new Runner(resyncConfig, makeDeps(makeMockReporter(), progress));
     await resyncRunner.run();
     resyncRunner.close();
 
-    expect(reporter.progress).toHaveBeenCalledWith(`Resyncing ${join(rootDir, 'src')} → ${join('a.txt')}`);
+    expect(progress.emitProgress).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'file',
+        phase: 'resync',
+        directory: join(rootDir, 'src'),
+        currentFile: join(rootDir, 'src', 'a.txt'),
+      }),
+    );
+  });
+
+  it('rejects with RunAbortedError when the signal is already aborted and writes nothing', async () => {
+    await createFile(rootDir, 'src/a.txt', 'hello');
+
+    const controller = new AbortController();
+    controller.abort();
+    const runner = new Runner(
+      makeConfig(dbPath, join(rootDir, 'src')),
+      makeDeps(makeMockReporter(), makeMockProgress(), controller.signal),
+    );
+    await expect(runner.run()).rejects.toBeInstanceOf(RunAbortedError);
+    runner.close();
+
+    const db = new Database(dbPath);
+    const count = db.prepare('SELECT COUNT(*) as c FROM entries').get() as { c: number };
+    db.close();
+    expect(count.c).toBe(0);
   });
 });

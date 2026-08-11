@@ -10,8 +10,6 @@ export interface Reporter {
   info(msg: string): void;
   warn(msg: string): void;
   error(msg: string): void;
-  progress(msg: string): void;
-  stopProgress(): void;
   printSummary(summary: RunSummary): void;
 }
 
