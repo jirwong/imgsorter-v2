@@ -57,7 +57,7 @@ describe('ScanPhase', () => {
     await createFile(rootDir, 'src/a.txt', 'hello');
     await createFile(rootDir, 'src/sub/b.txt', 'world');
 
-    const db = { insertFileInfo: vi.fn(() => 'inserted') };
+    const db = { insertFileEntries: vi.fn(() => ({ inserted: 2, updated: 0 })) };
     const progress = makeMockProgress();
     const reporter = makeMockReporter();
 
@@ -77,7 +77,7 @@ describe('ScanPhase', () => {
     expect(result.filesScanned).toBe(2);
     expect(result.entriesUpserted).toBe(2);
     expect(result.errors).toEqual([]);
-    expect(db.insertFileInfo).toHaveBeenCalledTimes(2);
+    expect(db.insertFileEntries).toHaveBeenCalledTimes(1);
 
     expect(progress.emitProgress).toHaveBeenCalledWith({
       type: 'phaseStart',
@@ -113,7 +113,7 @@ describe('ScanPhase', () => {
 
     const result = await new ScanPhase().run({
       config,
-      db: { insertFileInfo: vi.fn(() => 'inserted') } as unknown as DbService,
+      db: { insertFileEntries: vi.fn(() => ({ inserted: 1, updated: 0 })) } as unknown as DbService,
       reporter: asReporter(reporter),
       progress: asProgress(makeMockProgress()),
       marker: '[1/1]',
@@ -133,7 +133,7 @@ describe('ScanPhase', () => {
     await createFile(rootDir, 'src/a.txt', 'hello');
     const controller = new AbortController();
     controller.abort();
-    const db = { insertFileInfo: vi.fn(() => 'inserted') };
+    const db = { insertFileEntries: vi.fn(() => ({ inserted: 0, updated: 0 })) };
 
     await expect(
       new ScanPhase().run({
@@ -145,18 +145,15 @@ describe('ScanPhase', () => {
         signal: controller.signal,
       }),
     ).rejects.toBeInstanceOf(RunAbortedError);
-    expect(db.insertFileInfo).not.toHaveBeenCalled();
+    expect(db.insertFileEntries).not.toHaveBeenCalled();
   });
 
-  it('stops writing entries when the signal aborts between the walk and the insert loop', async () => {
+  it('propagates a DbService error from insertFileEntries', async () => {
     await createFile(rootDir, 'src/a.txt', 'hello');
-    await createFile(rootDir, 'src/b.txt', 'world');
 
-    const controller = new AbortController();
     const db = {
-      insertFileInfo: vi.fn(() => {
-        controller.abort();
-        return 'inserted';
+      insertFileEntries: vi.fn(() => {
+        throw new Error('db write failed');
       }),
     };
 
@@ -167,10 +164,8 @@ describe('ScanPhase', () => {
         reporter: asReporter(makeMockReporter()),
         progress: asProgress(makeMockProgress()),
         marker: '[1/1]',
-        signal: controller.signal,
+        signal: new AbortController().signal,
       }),
-    ).rejects.toBeInstanceOf(RunAbortedError);
-    // the walk completed (counts event emitted) but only one write happened
-    expect(db.insertFileInfo).toHaveBeenCalledTimes(1);
+    ).rejects.toThrow('db write failed');
   });
 });

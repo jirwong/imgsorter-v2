@@ -25,9 +25,7 @@ export class DbService {
   private db: DatabaseType;
   private insertEntryStmt!: Statement;
   private insertRecordStmt!: Statement;
-  private selectAllEntriesStmt!: Statement;
   private selectEntriesByDirStmt!: Statement;
-  private deleteEntryByIdStmt!: Statement;
   private deleteEntryByPathStmt!: Statement;
   private deleteAllRecordsStmt!: Statement;
   private dedupStmt!: Statement;
@@ -115,17 +113,12 @@ export class DbService {
          extension = excluded.extension`,
     );
 
-    this.selectAllEntriesStmt = this.db.prepare(
-      `SELECT size, directory, extension, filename, birthtime, hash, path FROM entries`,
-    );
-
     this.selectEntriesByDirStmt = this.db.prepare(
       `SELECT size, directory, extension, filename, birthtime, hash, path
        FROM entries
        WHERE directory = ? OR directory LIKE ? ESCAPE '\\' OR directory LIKE ? ESCAPE '\\'`,
     );
 
-    this.deleteEntryByIdStmt = this.db.prepare(`DELETE FROM entries WHERE id = ?`);
     this.deleteEntryByPathStmt = this.db.prepare(`DELETE FROM entries WHERE path = ?`);
     this.deleteAllRecordsStmt = this.db.prepare(`DELETE FROM records`);
 
@@ -167,7 +160,23 @@ export class DbService {
     return before.rowid === after.rowid ? 'updated' : 'inserted';
   }
 
-  insertFileRecord(fileRecord: FileRecord) {
+  insertFileEntries(files: FileEntry[]): { inserted: number; updated: number } {
+    const insertAll = this.db.transaction((entries: FileEntry[]) => {
+      let inserted = 0;
+      let updated = 0;
+      for (const file of entries) {
+        if (this.insertFileInfo(file) === 'inserted') {
+          inserted += 1;
+        } else {
+          updated += 1;
+        }
+      }
+      return { inserted, updated };
+    });
+    return insertAll(files);
+  }
+
+  private insertFileRecord(fileRecord: FileRecord) {
     this.insertRecordStmt.run({
       filename: fileRecord.filename,
       hash: fileRecord.hash,
@@ -179,33 +188,36 @@ export class DbService {
   }
 
   updateFileRecords() {
-    // Rebuild from scratch so records whose (filename, hash) no longer exists in
-    // entries (e.g. after a resync removed the underlying files) are dropped.
-    this.deleteAllRecordsStmt.run();
+    // Rebuild in a single transaction so a failure leaves the previous records
+    // table intact rather than half-deleted.
+    const rebuild = this.db.transaction(() => {
+      this.deleteAllRecordsStmt.run();
 
-    const rows = this.dedupStmt.all() as {
-      hash: string;
-      filename: string;
-      directories: string;
-      extension: string;
-      row_count: number;
-      size: number;
-    }[];
+      const rows = this.dedupStmt.all() as {
+        hash: string;
+        filename: string;
+        directories: string;
+        extension: string;
+        row_count: number;
+        size: number;
+      }[];
 
-    for (const row of rows) {
-      // json_group_array returns a JSON array; round-trip through JSON.parse normalizes
-      // escaping (e.g. Windows backslashes) without corrupting real double backslashes.
-      const directories = JSON.stringify(JSON.parse(row.directories));
+      for (const row of rows) {
+        // json_group_array returns a JSON array; round-trip through JSON.parse normalizes
+        // escaping (e.g. Windows backslashes) without corrupting real double backslashes.
+        const directories = JSON.stringify(JSON.parse(row.directories));
 
-      this.insertFileRecord({
-        filename: row.filename,
-        hash: row.hash,
-        count: row.row_count,
-        extension: row.extension,
-        directories,
-        size: row.size,
-      });
-    }
+        this.insertFileRecord({
+          filename: row.filename,
+          hash: row.hash,
+          count: row.row_count,
+          extension: row.extension,
+          directories,
+          size: row.size,
+        });
+      }
+    });
+    rebuild();
   }
 
   /**
@@ -231,11 +243,6 @@ export class DbService {
     return { duplicateGroups: groups.n, duplicateFiles: files.n };
   }
 
-  getFileEntries() {
-    const rows = this.selectAllEntriesStmt.all() as EntryRow[];
-    return rows.map((row) => this.mapEntry(row));
-  }
-
   getFileEntriesByDirectory(directory: string) {
     // Match the directory itself and any directory beneath it, bounded by a path
     // separator. Wildcard characters in the directory name are escaped so they are
@@ -243,10 +250,6 @@ export class DbService {
     const escaped = escapeLike(directory);
     const rows = this.selectEntriesByDirStmt.all(directory, `${escaped}/%`, `${escaped}\\${'\\'}%`) as EntryRow[];
     return rows.map((row) => this.mapEntry(row));
-  }
-
-  deleteFileEntryById(id: number) {
-    this.deleteEntryByIdStmt.run(id);
   }
 
   deleteFileEntryByPath(path: string) {
