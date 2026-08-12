@@ -1,3 +1,41 @@
+# AGENTS.md / CLAUDE.md Consolidation Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Consolidate `AGENTS.md` and `CLAUDE.md` into a single guidance file (`AGENTS.md`) and reduce `CLAUDE.md` to a one-line pointer stub, eliminating the duplication/drift between them.
+
+**Architecture:** `AGENTS.md` is the merged source of truth (it is the cross-tool standard and the file opencode reads); `CLAUDE.md` becomes a pointer stub so tools that look for that specific filename still find something. The merge keeps AGENTS.md's skeleton (Quick Commands, Project Structure, Technology Stack, Conventions, Workflow) and folds in CLAUDE.md's unique details.
+
+**Tech Stack:** None — documentation-only. Prettier is the only relevant tooling (both files are prettier-formatted markdown).
+
+## Global Constraints
+
+- TypeScript/Prettier repo conventions apply to the markdown: `pnpm format:check` must pass after the change.
+- No changes to README.md or CONTRIBUTING.md.
+- No changes to `src/`, config, or CI.
+- Only two files touched: `AGENTS.md` (merged content) and `CLAUDE.md` (pointer stub).
+- The merged `AGENTS.md` must preserve every non-duplicated detail from both source files (no information loss).
+- Per-task workflow (user's operating rules): one branch → PR → **STOP AND WAIT** for review/merge.
+
+---
+
+### Task 1: Merge AGENTS.md and CLAUDE.md
+
+Rewrite `AGENTS.md` with the merged content and replace `CLAUDE.md` with a pointer stub.
+
+**Files:**
+
+- Rewrite: `AGENTS.md`
+- Rewrite: `CLAUDE.md`
+
+**Interfaces:**
+
+- Consumes: current `AGENTS.md` (131 lines) and `CLAUDE.md` (111 lines) — both read above in this plan's context.
+- Produces: single merged `AGENTS.md` and a pointer-stub `CLAUDE.md`. No code consumes either file's structure; agents read them as prose guidance.
+
+- [ ] **Step 1: Write the merged `AGENTS.md`** — replace the entire contents of `AGENTS.md` with:
+
+````markdown
 # AGENTS.md
 
 This file provides guidance to AI coding agents when working with code in this repository.
@@ -139,3 +177,45 @@ This file provides guidance to AI coding agents when working with code in this r
 4. Run `pnpm test` to run tests
 5. Run `pnpm format` before committing
 6. Commit — pre-commit hook will auto-format staged files
+````
+
+- [ ] **Step 2: Write the `CLAUDE.md` pointer stub** — replace the entire contents of `CLAUDE.md` with:
+
+```markdown
+# CLAUDE.md
+
+This file is a pointer. The repository's agent guidance lives in `AGENTS.md`:
+read that file for commands, project structure, conventions, and workflow.
+```
+
+- [ ] **Step 3: Verify no information was lost**
+
+Run:
+
+```
+rg -i "prepare|prettierignore|@types/node|zod 4\.4\.3|72 char|\.node-version|\.nvmrc|packages=external|Unused variables|named export|Conventional Commits|env\.ts|coverage thresholds|test:watch|lint:fix" AGENTS.md CLAUDE.md
+```
+
+Expected: every line appears in `AGENTS.md`; `CLAUDE.md` contains only the pointer stub.
+
+- [ ] **Step 4: Run the format check**
+
+Run: `pnpm format:check`
+Expected: PASS (both files use Prettier style). If it fails on `AGENTS.md`/`CLAUDE.md`, run `pnpm exec prettier --write AGENTS.md CLAUDE.md` and re-check.
+
+- [ ] **Step 5: Verify no other docs reference the removed content**
+
+Run: `rg -l "migrated from imgsorter-utils|Run `pnpm prepare` to install hooks" README.md CONTRIBUTING.md`
+Expected: no matches (nothing else referenced the dropped CLAUDE.md intro or its hooks note).
+
+- [ ] **Step 6: Commit, push, open PR, STOP**
+
+```bash
+git checkout -b docs/consolidate-agent-guidance
+git add AGENTS.md CLAUDE.md
+git commit -m "docs: consolidate agent guidance into AGENTS.md"
+git push -u gh docs/consolidate-agent-guidance
+gh pr create --title "docs: consolidate agent guidance into AGENTS.md" --body "Merges AGENTS.md and CLAUDE.md into a single AGENTS.md (the cross-tool standard opencode reads), folding in CLAUDE.md's unique details: @types/node 24.13.3, zod 4.4.3, esbuild --packages=external, .node-version/.nvmrc, the pnpm prepare hooks note, the 72-char commit-body wrap, and a Code Formatting section. CLAUDE.md becomes a one-line pointer stub so tools that look for that filename still find something. No information loss; format:check passes."
+```
+
+**STOP AND WAIT.** This is the only task. After merge, the consolidation is complete.
