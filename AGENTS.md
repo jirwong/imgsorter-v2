@@ -64,6 +64,8 @@ This file provides guidance to AI coding agents when working with code in this r
 ├── vitest.config.ts            # Vitest config (coverage)
 ├── .oxlintrc.json              # oxlint config
 ├── .editorconfig               # Editor-agnostic settings
+├── .node-version               # Node version for nodenv (v24.12.0)
+├── .nvmrc                      # Node version for NVM (v24.12.0)
 ├── lefthook.yml                # Git hooks
 ├── pnpm-workspace.yaml         # pnpm workspace & settings
 ├── .gitattributes              # Line-ending normalization (LF)
@@ -72,7 +74,7 @@ This file provides guidance to AI coding agents when working with code in this r
 
 ## Technology Stack
 
-- **Runtime:** Node.js 24.12.0
+- **Runtime:** Node.js 24.12.0 (see `.node-version` / `.nvmrc`)
 - **Package manager:** pnpm 11.20.0
 - **Language:** TypeScript 7.0.2 (strict mode, ES2023 target, NodeNext module)
 - **Bundler:** esbuild 0.28.1 (bundles with `--packages=external` so native modules are not bundled)
@@ -81,7 +83,8 @@ This file provides guidance to AI coding agents when working with code in this r
 - **Linting:** oxlint 1.77.0 (syntax-level rules; use `tsc` for type errors)
 - **Formatting:** Prettier 3.9.6
 - **Git hooks:** Lefthook 2.1.10 + lint-staged 17.3.0
-- **Runtime deps:** better-sqlite3 12.x, commander 15.x, nanospinner 1.x, yaml 2.x, zod 4.x
+- **Type definitions:** @types/node 24.13.3
+- **Runtime deps:** better-sqlite3 12.x, commander 15.x, nanospinner 1.x, yaml 2.x, zod 4.4.3
 
 ## Conventions
 
@@ -114,12 +117,19 @@ This file provides guidance to AI coding agents when working with code in this r
 - **Pre-push hook:** typecheck + lint
 - Commits should follow [Conventional Commits](https://www.conventionalcommits.org/)
 - Keep commits focused — one logical change per commit
-- Imperative mood, 50-char subject line max
+- Imperative mood, 50-char subject line max; commit body wraps at 72 characters
+- Run `pnpm prepare` to install hooks (automatically run on `pnpm install`)
 
 ### Configuration
 
 - User configuration is a YAML file (`config.yaml`) validated with a zod schema in `src/utilities/load-config.ts`
 - There are no environment variables; the template's `src/env.ts` was removed during migration
+
+### Code Formatting
+
+- Prettier configuration lives in `prettier.config.mjs`
+- Files in `.prettierignore` are excluded from formatting
+- Run `pnpm format` to format all files; `pnpm format:check` verifies without changing
 
 ## Workflow
 
