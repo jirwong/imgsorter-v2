@@ -16,32 +16,34 @@ export async function fileExists(path: string): Promise<boolean> {
 }
 
 export async function readFileInfo(path: string, getHash: boolean = true): Promise<FileEntry> {
-  const stats = await fs.stat(path);
-
-  const size = stats.size;
-  const directory = dirname(path);
-  const extension = extname(path);
-  const filename = basename(path);
-  const birthtime = stats.birthtime;
-  const hash = getHash ? await getHashEdges(path) : undefined;
-
-  return {
-    size,
-    directory,
-    extension,
-    path,
-    filename,
-    birthtime,
-    hash,
-  };
-}
-
-export async function getHashEdges(path: string, algorithm: string = 'sha256'): Promise<string> {
   const fd = await fs.open(path, 'r');
   try {
     const stats = await fd.stat();
-    const size = stats.size;
 
+    const size = stats.size;
+    const directory = dirname(path);
+    const extension = extname(path);
+    const filename = basename(path);
+    const birthtime = stats.birthtime;
+    const hash = getHash ? await getHashEdges(path, size) : undefined;
+
+    return {
+      size,
+      directory,
+      extension,
+      path,
+      filename,
+      birthtime,
+      hash,
+    };
+  } finally {
+    await fd.close();
+  }
+}
+
+export async function getHashEdges(path: string, size: number, algorithm: string = 'sha256'): Promise<string> {
+  const fd = await fs.open(path, 'r');
+  try {
     const firstLen = Math.min(EDGE_CHUNK_SIZE, size);
     const lastLen = Math.min(EDGE_CHUNK_SIZE, Math.max(0, size - firstLen));
 

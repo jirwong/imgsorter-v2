@@ -5,10 +5,7 @@ import { CliReporter } from './output/reporter';
 import { ProgressEmitter } from './output/progress';
 import { RunAbortedError } from './phases/abort';
 import { loadRunConfiguration } from './utilities/load-config';
-
-function errorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
-}
+import { errorMessage } from './utilities/error-message';
 
 export async function main(argv: string[]): Promise<number> {
   // pnpm run forwards the `--` separator literally (e.g. `pnpm start -- --config x`),
