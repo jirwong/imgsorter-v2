@@ -19,7 +19,7 @@ function makeSummary(overrides: Partial<RunSummary> = {}): RunSummary {
   return {
     phases: [{ name: 'scan', elapsedMs: 12 }],
     filesScanned: 4,
-    entriesUpserted: 3,
+    entriesWritten: 3,
     duplicateGroups: 1,
     duplicateFiles: 2,
     staleRemoved: 5,
@@ -144,7 +144,7 @@ describe('CliReporter', () => {
       }),
     );
 
-    expect(consoleLog).toHaveBeenCalledWith('Scan: 4 files scanned, 3 entries upserted (12 ms)');
+    expect(consoleLog).toHaveBeenCalledWith('Scan: 4 files scanned, 3 entries written (12 ms)');
     expect(consoleLog).toHaveBeenCalledWith('Resync: 5 stale entries removed (4 ms)');
     expect(consoleLog).toHaveBeenCalledWith('Records: 1 duplicate group, 2 duplicate files (3 ms)');
   });

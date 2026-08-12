@@ -4,9 +4,8 @@ import { tmpdir } from 'node:os';
 import { join, dirname, basename } from 'node:path';
 import { ResyncPhase } from './resync-phase';
 import { RunAbortedError } from './abort';
-import { makeMockReporter, makeMockProgress, asReporter, asProgress } from './test-helpers';
+import { makeConfig, makeMockReporter, makeMockProgress, asReporter, asProgress } from './test-helpers';
 import type { DbService } from '../services/db-service';
-import type { RunConfiguration } from '../types/configuration';
 import type { FileEntry } from '../types/file-types';
 
 async function makeTempDir(prefix = 'resync-phase-'): Promise<string> {
@@ -15,19 +14,6 @@ async function makeTempDir(prefix = 'resync-phase-'): Promise<string> {
 
 async function removeDirRecursive(path: string): Promise<void> {
   await fs.rm(path, { recursive: true, force: true });
-}
-
-function makeConfig(directory: string, checkActualFile: boolean): RunConfiguration {
-  return {
-    dbName: 'test.db',
-    extensions: ['.txt'],
-    directories: [directory],
-    ignore_directories: [],
-    update_records: false,
-    process_directories: false,
-    resync_directories: true,
-    resync_check_actual_file: checkActualFile,
-  };
 }
 
 function makeEntry(path: string): FileEntry {
@@ -55,8 +41,21 @@ describe('ResyncPhase', () => {
 
   it('is enabled only when resync_directories is true', () => {
     const phase = new ResyncPhase();
-    expect(phase.enabled(makeConfig(join(rootDir, 'src'), false))).toBe(true);
-    expect(phase.enabled({ ...makeConfig(join(rootDir, 'src'), false), resync_directories: false })).toBe(false);
+    expect(
+      phase.enabled(
+        makeConfig({ directories: [join(rootDir, 'src')], resync_directories: true, resync_check_actual_file: false }),
+      ),
+    ).toBe(true);
+    expect(
+      phase.enabled({
+        ...makeConfig({
+          directories: [join(rootDir, 'src')],
+          resync_directories: true,
+          resync_check_actual_file: false,
+        }),
+        resync_directories: false,
+      }),
+    ).toBe(false);
   });
 
   it('removes stale entries when checkActualFile is true', async () => {
@@ -72,7 +71,7 @@ describe('ResyncPhase', () => {
     const progress = makeMockProgress();
 
     const result = await new ResyncPhase().run({
-      config: makeConfig(src, true),
+      config: makeConfig({ directories: [src], resync_directories: true, resync_check_actual_file: true }),
       db: db as unknown as DbService,
       reporter: asReporter(makeMockReporter()),
       progress: asProgress(progress),
@@ -111,7 +110,7 @@ describe('ResyncPhase', () => {
     const progress = makeMockProgress();
 
     const result = await new ResyncPhase().run({
-      config: makeConfig(src, false),
+      config: makeConfig({ directories: [src], resync_directories: true, resync_check_actual_file: false }),
       db: db as unknown as DbService,
       reporter: asReporter(makeMockReporter()),
       progress: asProgress(progress),
@@ -172,7 +171,11 @@ describe('ResyncPhase', () => {
     const reporter = makeMockReporter();
 
     const result = await new ResyncPhase().run({
-      config: makeConfig(join(rootDir, 'missing'), false),
+      config: makeConfig({
+        directories: [join(rootDir, 'missing')],
+        resync_directories: true,
+        resync_check_actual_file: false,
+      }),
       db: { getFileEntriesByDirectory: vi.fn(() => []), deleteFileEntryByPath: vi.fn() } as unknown as DbService,
       reporter: asReporter(reporter),
       progress: asProgress(makeMockProgress()),
@@ -191,7 +194,11 @@ describe('ResyncPhase', () => {
 
     await expect(
       new ResyncPhase().run({
-        config: makeConfig(join(rootDir, 'src'), true),
+        config: makeConfig({
+          directories: [join(rootDir, 'src')],
+          resync_directories: true,
+          resync_check_actual_file: true,
+        }),
         db: { getFileEntriesByDirectory: vi.fn(() => []), deleteFileEntryByPath: vi.fn() } as unknown as DbService,
         reporter: asReporter(makeMockReporter()),
         progress: asProgress(makeMockProgress()),

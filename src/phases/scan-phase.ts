@@ -20,7 +20,7 @@ export class ScanPhase implements Phase {
     ctx.progress.emitProgress({ type: 'phaseStart', phase: 'scan', marker: ctx.marker });
 
     let filesScanned = 0;
-    let entriesUpserted = 0;
+    let entriesWritten = 0;
     let filesProcessed = 0;
     const errors: string[] = [];
 
@@ -61,7 +61,7 @@ export class ScanPhase implements Phase {
 
         filesScanned += files.length;
         const { inserted, updated } = ctx.db.insertFileEntries(files);
-        entriesUpserted += inserted + updated;
+        entriesWritten += inserted + updated;
       },
     );
 
@@ -70,7 +70,7 @@ export class ScanPhase implements Phase {
       elapsedMs: Math.round(performance.now() - start),
       errors,
       filesScanned,
-      entriesUpserted,
+      entriesWritten,
     };
   }
 }

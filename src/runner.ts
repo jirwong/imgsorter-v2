@@ -31,7 +31,7 @@ export class Runner {
     const summary: RunSummary = {
       phases: [],
       filesScanned: 0,
-      entriesUpserted: 0,
+      entriesWritten: 0,
       duplicateGroups: 0,
       duplicateFiles: 0,
       staleRemoved: 0,
@@ -56,7 +56,7 @@ export class Runner {
       switch (result.name) {
         case 'scan':
           summary.filesScanned = result.filesScanned;
-          summary.entriesUpserted = result.entriesUpserted;
+          summary.entriesWritten = result.entriesWritten;
           break;
         case 'resync':
           summary.staleRemoved = result.staleRemoved;

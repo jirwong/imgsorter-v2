@@ -110,7 +110,7 @@ export class CliReporter implements Reporter {
       switch (phase.name) {
         case 'scan':
           this.info(
-            `Scan: ${summary.filesScanned} files scanned, ${summary.entriesUpserted} entries upserted (${phase.elapsedMs} ms)`,
+            `Scan: ${summary.filesScanned} files scanned, ${summary.entriesWritten} entries written (${phase.elapsedMs} ms)`,
           );
           break;
         case 'resync':

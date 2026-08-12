@@ -2,6 +2,7 @@ import { vi } from 'vitest';
 import type { Mock } from 'vitest';
 import type { Reporter } from '../output/reporter';
 import type { ProgressSink } from '../types/progress';
+import type { RunConfiguration } from '../types/configuration';
 
 export type MockReporter = {
   debug: Mock;
@@ -35,4 +36,18 @@ export function asReporter(mock: MockReporter): Reporter {
 
 export function asProgress(mock: MockProgress): ProgressSink {
   return mock as unknown as ProgressSink;
+}
+
+export function makeConfig(overrides: Partial<RunConfiguration> = {}): RunConfiguration {
+  return {
+    dbName: 'test.db',
+    extensions: ['.txt'],
+    directories: [],
+    ignore_directories: [],
+    update_records: false,
+    process_directories: true,
+    resync_directories: false,
+    resync_check_actual_file: false,
+    ...overrides,
+  };
 }

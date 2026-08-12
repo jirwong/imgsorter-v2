@@ -20,6 +20,6 @@ export type PhaseContext = {
 };
 
 export type PhaseResult =
-  | { name: 'scan'; elapsedMs: number; errors: string[]; filesScanned: number; entriesUpserted: number }
+  | { name: 'scan'; elapsedMs: number; errors: string[]; filesScanned: number; entriesWritten: number }
   | { name: 'resync'; elapsedMs: number; errors: string[]; staleRemoved: number }
   | { name: 'records'; elapsedMs: number; errors: string[]; duplicateGroups: number; duplicateFiles: number };

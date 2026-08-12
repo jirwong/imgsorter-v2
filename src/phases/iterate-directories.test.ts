@@ -1,36 +1,12 @@
 import { describe, it, expect, vi } from 'vitest';
 import { iterateDirectories } from './iterate-directories';
 import { RunAbortedError } from './abort';
-import type { RunConfiguration } from '../types/configuration';
-import type { Reporter } from '../output/reporter';
-
-function makeConfig(directories: string[], ignoreDirectories: string[] = []): RunConfiguration {
-  return {
-    dbName: 'test.db',
-    extensions: ['.txt'],
-    directories,
-    ignore_directories: ignoreDirectories,
-    update_records: false,
-    process_directories: false,
-    resync_directories: false,
-    resync_check_actual_file: false,
-  };
-}
-
-function makeReporter(): Reporter {
-  return {
-    debug: vi.fn(),
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    printSummary: vi.fn(),
-  };
-}
+import { makeConfig, makeMockReporter, asReporter } from './test-helpers';
 
 describe('iterateDirectories', () => {
   it('calls the body once per non-ignored directory and emits directoryStart before it', async () => {
-    const config = makeConfig(['/a', '/b']);
-    const reporter = makeReporter();
+    const config = makeConfig({ directories: ['/a', '/b'] });
+    const reporter = asReporter(makeMockReporter());
     const progress = { emitProgress: vi.fn() };
     const body = vi.fn();
 
@@ -53,8 +29,8 @@ describe('iterateDirectories', () => {
   });
 
   it('skips ignored directories with an info message', async () => {
-    const config = makeConfig(['/a', '/ignored', '/b'], ['/ignored']);
-    const reporter = makeReporter();
+    const config = makeConfig({ directories: ['/a', '/ignored', '/b'], ignore_directories: ['/ignored'] });
+    const reporter = asReporter(makeMockReporter());
     const progress = { emitProgress: vi.fn() };
     const body = vi.fn();
 
@@ -84,8 +60,8 @@ describe('iterateDirectories', () => {
       iterateDirectories(
         'scan',
         {
-          config: makeConfig(['/a']),
-          reporter: makeReporter(),
+          config: makeConfig({ directories: ['/a'] }),
+          reporter: asReporter(makeMockReporter()),
           progress: { emitProgress: vi.fn() },
           signal: controller.signal,
         },
