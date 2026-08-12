@@ -436,7 +436,7 @@ describe('DbService', () => {
     expect(service.getDuplicateStats()).toEqual({ duplicateGroups: 0, duplicateFiles: 0 });
   });
 
-  it('insertFileInfos inserts multiple entries and reports inserted counts', () => {
+  it('insertFileEntries inserts multiple entries and reports inserted counts', () => {
     const service = openService();
 
     const entry1: FileEntry = {
@@ -458,12 +458,12 @@ describe('DbService', () => {
       hash: 'h2',
     };
 
-    const counts = service.insertFileInfos([entry1, entry2]);
+    const counts = service.insertFileEntries([entry1, entry2]);
 
     expect(counts).toEqual({ inserted: 2, updated: 0 });
   });
 
-  it('insertFileInfos reports updated counts for paths that already exist', () => {
+  it('insertFileEntries reports updated counts for paths that already exist', () => {
     const service = openService();
 
     const original: FileEntry = {
@@ -478,12 +478,12 @@ describe('DbService', () => {
     service.insertFileInfo(original);
 
     const updated: FileEntry = { ...original, size: 456, hash: 'h2' };
-    const counts = service.insertFileInfos([updated]);
+    const counts = service.insertFileEntries([updated]);
 
     expect(counts).toEqual({ inserted: 0, updated: 1 });
   });
 
-  it('insertFileInfos rolls back all entries when one insert fails', () => {
+  it('insertFileEntries rolls back all entries when one insert fails', () => {
     const service = openService();
 
     const good: FileEntry = {
@@ -514,7 +514,7 @@ describe('DbService', () => {
       hash: 'g',
     };
 
-    expect(() => service.insertFileInfos([good, bad])).toThrow();
+    expect(() => service.insertFileEntries([good, bad])).toThrow();
 
     const rows = new Database(dbPath).prepare('SELECT path FROM entries').all() as { path: string }[];
     expect(rows).toEqual([]); // the whole transaction rolled back

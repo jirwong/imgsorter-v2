@@ -160,7 +160,7 @@ export class DbService {
     return before.rowid === after.rowid ? 'updated' : 'inserted';
   }
 
-  insertFileInfos(files: FileEntry[]): { inserted: number; updated: number } {
+  insertFileEntries(files: FileEntry[]): { inserted: number; updated: number } {
     const insertAll = this.db.transaction((entries: FileEntry[]) => {
       let inserted = 0;
       let updated = 0;

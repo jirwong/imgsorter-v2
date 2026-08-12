@@ -57,7 +57,7 @@ describe('ScanPhase', () => {
     await createFile(rootDir, 'src/a.txt', 'hello');
     await createFile(rootDir, 'src/sub/b.txt', 'world');
 
-    const db = { insertFileInfos: vi.fn(() => ({ inserted: 2, updated: 0 })) };
+    const db = { insertFileEntries: vi.fn(() => ({ inserted: 2, updated: 0 })) };
     const progress = makeMockProgress();
     const reporter = makeMockReporter();
 
@@ -77,7 +77,7 @@ describe('ScanPhase', () => {
     expect(result.filesScanned).toBe(2);
     expect(result.entriesUpserted).toBe(2);
     expect(result.errors).toEqual([]);
-    expect(db.insertFileInfos).toHaveBeenCalledTimes(1);
+    expect(db.insertFileEntries).toHaveBeenCalledTimes(1);
 
     expect(progress.emitProgress).toHaveBeenCalledWith({
       type: 'phaseStart',
@@ -113,7 +113,7 @@ describe('ScanPhase', () => {
 
     const result = await new ScanPhase().run({
       config,
-      db: { insertFileInfos: vi.fn(() => ({ inserted: 1, updated: 0 })) } as unknown as DbService,
+      db: { insertFileEntries: vi.fn(() => ({ inserted: 1, updated: 0 })) } as unknown as DbService,
       reporter: asReporter(reporter),
       progress: asProgress(makeMockProgress()),
       marker: '[1/1]',
@@ -133,7 +133,7 @@ describe('ScanPhase', () => {
     await createFile(rootDir, 'src/a.txt', 'hello');
     const controller = new AbortController();
     controller.abort();
-    const db = { insertFileInfos: vi.fn(() => ({ inserted: 0, updated: 0 })) };
+    const db = { insertFileEntries: vi.fn(() => ({ inserted: 0, updated: 0 })) };
 
     await expect(
       new ScanPhase().run({
@@ -145,14 +145,14 @@ describe('ScanPhase', () => {
         signal: controller.signal,
       }),
     ).rejects.toBeInstanceOf(RunAbortedError);
-    expect(db.insertFileInfos).not.toHaveBeenCalled();
+    expect(db.insertFileEntries).not.toHaveBeenCalled();
   });
 
-  it('propagates a DbService error from insertFileInfos', async () => {
+  it('propagates a DbService error from insertFileEntries', async () => {
     await createFile(rootDir, 'src/a.txt', 'hello');
 
     const db = {
-      insertFileInfos: vi.fn(() => {
+      insertFileEntries: vi.fn(() => {
         throw new Error('db write failed');
       }),
     };

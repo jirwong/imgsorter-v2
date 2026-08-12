@@ -38,15 +38,15 @@ Wrap all multi-statement DB writes in transactions and remove the dead `DbServic
 
 - Consumes: existing `DbService`, `ScanPhase`, `PhaseContext`.
 - Produces (used by Task 3, which renames the field):
-  - `DbService.insertFileInfos(files: FileEntry[]): { inserted: number; updated: number }` — inserts all entries in one SQLite transaction, returning how many were inserted vs updated.
+  - `DbService.insertFileEntries(files: FileEntry[]): { inserted: number; updated: number }` — inserts all entries in one SQLite transaction, returning how many were inserted vs updated.
   - `DbService.updateFileRecords()` — same signature; now wraps the rebuild in one transaction.
   - Removed: `getFileEntries()`, `deleteFileEntryById()`. `insertFileRecord` becomes `private`.
-  - `ScanPhase` calls `insertFileInfos(files)` once per directory instead of looping `insertFileInfo` per file.
+  - `ScanPhase` calls `insertFileEntries(files)` once per directory instead of looping `insertFileInfo` per file.
 
 - [ ] **Step 1: Write the failing tests** — append to `src/services/db-service.test.ts` (inside `describe('DbService', ...)`):
 
 ```ts
-it('insertFileInfos inserts multiple entries and reports inserted counts', () => {
+it('insertFileEntries inserts multiple entries and reports inserted counts', () => {
   const service = openService();
 
   const entry1: FileEntry = {
@@ -68,12 +68,12 @@ it('insertFileInfos inserts multiple entries and reports inserted counts', () =>
     hash: 'h2',
   };
 
-  const counts = service.insertFileInfos([entry1, entry2]);
+  const counts = service.insertFileEntries([entry1, entry2]);
 
   expect(counts).toEqual({ inserted: 2, updated: 0 });
 });
 
-it('insertFileInfos reports updated counts for paths that already exist', () => {
+it('insertFileEntries reports updated counts for paths that already exist', () => {
   const service = openService();
 
   const original: FileEntry = {
@@ -88,12 +88,12 @@ it('insertFileInfos reports updated counts for paths that already exist', () => 
   service.insertFileInfo(original);
 
   const updated: FileEntry = { ...original, size: 456, hash: 'h2' };
-  const counts = service.insertFileInfos([updated]);
+  const counts = service.insertFileEntries([updated]);
 
   expect(counts).toEqual({ inserted: 0, updated: 1 });
 });
 
-it('insertFileInfos rolls back all entries when one insert fails', () => {
+it('insertFileEntries rolls back all entries when one insert fails', () => {
   const service = openService();
 
   const good: FileEntry = {
@@ -124,7 +124,7 @@ it('insertFileInfos rolls back all entries when one insert fails', () => {
     hash: 'g',
   };
 
-  expect(() => service.insertFileInfos([good, bad])).toThrow();
+  expect(() => service.insertFileEntries([good, bad])).toThrow();
 
   const rows = new Database(dbPath).prepare('SELECT path FROM entries').all() as { path: string }[];
   expect(rows).toEqual([]); // the whole transaction rolled back
@@ -134,9 +134,9 @@ it('insertFileInfos rolls back all entries when one insert fails', () => {
 - [ ] **Step 2: Run tests to verify they fail**
 
 Run: `pnpm test src/services/db-service.test.ts`
-Expected: all three FAIL — `insertFileInfos` does not exist on `DbService`. (The rollback test also fails because without a transaction, `good` stays inserted after the `bad` insert throws.)
+Expected: all three FAIL — `insertFileEntries` does not exist on `DbService`. (The rollback test also fails because without a transaction, `good` stays inserted after the `bad` insert throws.)
 
-- [ ] **Step 3: Implement `insertFileInfos` + transaction in `updateFileRecords`** — edit `src/services/db-service.ts`:
+- [ ] **Step 3: Implement `insertFileEntries` + transaction in `updateFileRecords`** — edit `src/services/db-service.ts`:
 
 Replace the `updateFileRecords` method body (currently `db-service.ts:181-209`) with:
 
@@ -175,10 +175,10 @@ updateFileRecords() {
 }
 ```
 
-Add `insertFileInfos` immediately after `insertFileInfo` (after `db-service.ts:168`):
+Add `insertFileEntries` immediately after `insertFileInfo` (after `db-service.ts:168`):
 
 ```ts
-insertFileInfos(files: FileEntry[]): { inserted: number; updated: number } {
+insertFileEntries(files: FileEntry[]): { inserted: number; updated: number } {
   const insertAll = this.db.transaction((entries: FileEntry[]) => {
     let inserted = 0;
     let updated = 0;
@@ -218,7 +218,7 @@ with:
 
 ```ts
 filesScanned += files.length;
-const { inserted, updated } = ctx.db.insertFileInfos(files);
+const { inserted, updated } = ctx.db.insertFileEntries(files);
 entriesUpserted += inserted + updated;
 ```
 
@@ -227,7 +227,7 @@ Behavior notes:
 - The per-file `throwIfAborted` is removed — it was a no-op: better-sqlite3 is synchronous, so the abort signal cannot change mid-batch. Abort still lands at the top of each directory iteration in `iterate-directories.ts`.
 - The per-file `--verbose` debug line `Upserted (status) path` is dropped (verbose-only; no test asserts it). This is the one intentional verbose-output change in PR 1.
 
-- [ ] **Step 6: Update `src/phases/scan-phase.test.ts`** — the db mock now provides `insertFileInfos`:
+- [ ] **Step 6: Update `src/phases/scan-phase.test.ts`** — the db mock now provides `insertFileEntries`:
 
 (a) Replace the mock in "lists matching files, writes entries, and reports counters and events" (currently `scan-phase.test.ts:60`):
 
@@ -238,7 +238,7 @@ const db = { insertFileInfo: vi.fn(() => 'inserted') };
 with:
 
 ```ts
-const db = { insertFileInfos: vi.fn(() => ({ inserted: 2, updated: 0 })) };
+const db = { insertFileEntries: vi.fn(() => ({ inserted: 2, updated: 0 })) };
 ```
 
 And replace the assertion at `scan-phase.test.ts:80`:
@@ -250,7 +250,7 @@ expect(db.insertFileInfo).toHaveBeenCalledTimes(2);
 with:
 
 ```ts
-expect(db.insertFileInfos).toHaveBeenCalledTimes(1);
+expect(db.insertFileEntries).toHaveBeenCalledTimes(1);
 ```
 
 (b) Replace the db mock in "collects a directory listing error..." (currently `scan-phase.test.ts:116`):
@@ -262,7 +262,7 @@ expect(db.insertFileInfos).toHaveBeenCalledTimes(1);
 with:
 
 ```ts
-      db: { insertFileInfos: vi.fn(() => ({ inserted: 1, updated: 0 })) } as unknown as DbService,
+      db: { insertFileEntries: vi.fn(() => ({ inserted: 1, updated: 0 })) } as unknown as DbService,
 ```
 
 (c) Replace the db mock in "throws RunAbortedError when the signal is already aborted..." (currently `scan-phase.test.ts:136`) and its assertion (`:148`):
@@ -277,20 +277,20 @@ with:
 becomes:
 
 ```ts
-    const db = { insertFileInfos: vi.fn(() => ({ inserted: 0, updated: 0 })) };
+    const db = { insertFileEntries: vi.fn(() => ({ inserted: 0, updated: 0 })) };
 
     await expect(...)...
-    expect(db.insertFileInfos).not.toHaveBeenCalled();
+    expect(db.insertFileEntries).not.toHaveBeenCalled();
 ```
 
 (d) Replace the mid-write abort test ("stops writing entries when the signal aborts between the walk and the insert loop", currently `scan-phase.test.ts:151-175`) with a test that a DB error from the batch propagates and fails the run:
 
 ```ts
-it('propagates a DbService error from insertFileInfos', async () => {
+it('propagates a DbService error from insertFileEntries', async () => {
   await createFile(rootDir, 'src/a.txt', 'hello');
 
   const db = {
-    insertFileInfos: vi.fn(() => {
+    insertFileEntries: vi.fn(() => {
       throw new Error('db write failed');
     }),
   };
@@ -359,7 +359,7 @@ git checkout -b refactor/db-transactions-and-cleanup
 git add src/services/db-service.ts src/services/db-service.test.ts src/phases/scan-phase.ts src/phases/scan-phase.test.ts
 git commit -m "refactor: batch DB writes in transactions and drop dead DbService methods"
 git push -u gh refactor/db-transactions-and-cleanup
-gh pr create --title "refactor: batch DB writes in transactions and drop dead DbService methods" --body "Wraps updateFileRecords() and the scan insert loop in better-sqlite3 transactions (one commit per rebuild / per directory instead of per statement). Adds DbService.insertFileInfos() returning inserted/updated counts; ScanPhase consumes it. Removes the test-only getFileEntries()/deleteFileEntryById() methods and makes insertFileRecord private. Per-file verbose debug line in the scan insert loop is dropped (no test asserted it). Behavior otherwise identical."
+gh pr create --title "refactor: batch DB writes in transactions and drop dead DbService methods" --body "Wraps updateFileRecords() and the scan insert loop in better-sqlite3 transactions (one commit per rebuild / per directory instead of per statement). Adds DbService.insertFileEntries() returning inserted/updated counts; ScanPhase consumes it. Removes the test-only getFileEntries()/deleteFileEntryById() methods and makes insertFileRecord private. Per-file verbose debug line in the scan insert loop is dropped (no test asserted it). Behavior otherwise identical."
 ```
 
 **STOP AND WAIT.** Do not start Task 2 until this PR is reviewed and merged. Then run `git checkout main && git pull`.
@@ -609,7 +609,7 @@ let filesWritten = 0;
 
 ```ts
 filesScanned += files.length;
-const { inserted, updated } = ctx.db.insertFileInfos(files);
+const { inserted, updated } = ctx.db.insertFileEntries(files);
 filesWritten += inserted + updated;
 ```
 
