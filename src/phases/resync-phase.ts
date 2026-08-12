@@ -4,10 +4,7 @@ import { iterateDirectories } from './iterate-directories';
 import { RunAbortedError, throwIfAborted } from './abort';
 import type { Phase, PhaseContext, PhaseResult } from './types';
 import type { RunConfiguration } from '../types/configuration';
-
-function errorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
-}
+import { errorMessage } from '../utilities/error-message';
 
 export class ResyncPhase implements Phase {
   readonly name = 'resync' as const;

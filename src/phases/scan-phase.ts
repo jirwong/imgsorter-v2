@@ -4,10 +4,7 @@ import { RunAbortedError, throwIfAborted } from './abort';
 import type { Phase, PhaseContext, PhaseResult } from './types';
 import type { RunConfiguration } from '../types/configuration';
 import type { FileEntry } from '../types/file-types';
-
-function errorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
-}
+import { errorMessage } from '../utilities/error-message';
 
 export class ScanPhase implements Phase {
   readonly name = 'scan' as const;

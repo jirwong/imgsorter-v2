@@ -95,8 +95,9 @@ describe('fileService functions', () => {
     it('produces a deterministic hash for a small file (<16KB)', async () => {
       const content = 'small file content';
       const filePath = await createFile(rootDir, 'files/small.txt', content);
+      const size = (await fs.stat(filePath)).size;
 
-      const hash = await getHashEdges(filePath);
+      const hash = await getHashEdges(filePath, size);
       expect(hash).toBe(computeExpectedEdgeHash(content, 16 * 1024));
     });
 
@@ -106,8 +107,8 @@ describe('fileService functions', () => {
       const fileA = await createFile(rootDir, 'files/a.bin', contentA);
       const fileB = await createFile(rootDir, 'files/b.bin', contentB);
 
-      const hashA = await getHashEdges(fileA);
-      const hashB = await getHashEdges(fileB);
+      const hashA = await getHashEdges(fileA, (await fs.stat(fileA)).size);
+      const hashB = await getHashEdges(fileB, (await fs.stat(fileB)).size);
 
       expect(hashA).not.toBe(hashB);
     });
@@ -131,13 +132,13 @@ describe('fileService functions', () => {
         return h.digest('hex');
       })();
 
-      const actual = await getHashEdges(filePath);
+      const actual = await getHashEdges(filePath, totalSize);
       expect(actual).toBe(expectedHash);
     });
 
     it('throws when file does not exist', async () => {
       const nonExistent = join(rootDir, 'missing.bin');
-      await expect(getHashEdges(nonExistent)).rejects.toThrow();
+      await expect(getHashEdges(nonExistent, 0)).rejects.toThrow();
     });
   });
 
