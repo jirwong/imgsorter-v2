@@ -2,39 +2,15 @@ import { describe, it, expect, vi } from 'vitest';
 import type { Mock } from 'vitest';
 import { RecordsPhase } from './records-phase';
 import { RunAbortedError } from './abort';
+import { makeConfig, makeMockReporter, asReporter } from './test-helpers';
 import type { DbService } from '../services/db-service';
-import type { RunConfiguration } from '../types/configuration';
-import type { Reporter } from '../output/reporter';
 import type { ProgressSink } from '../types/progress';
-
-function makeConfig(updateRecords = true): RunConfiguration {
-  return {
-    dbName: 'test.db',
-    extensions: [],
-    directories: [],
-    ignore_directories: [],
-    update_records: updateRecords,
-    process_directories: false,
-    resync_directories: false,
-    resync_check_actual_file: false,
-  };
-}
-
-function makeReporter(): Reporter {
-  return {
-    debug: vi.fn(),
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    printSummary: vi.fn(),
-  };
-}
 
 describe('RecordsPhase', () => {
   it('is enabled only when update_records is true', () => {
     const phase = new RecordsPhase();
-    expect(phase.enabled(makeConfig(true))).toBe(true);
-    expect(phase.enabled(makeConfig(false))).toBe(false);
+    expect(phase.enabled(makeConfig({ update_records: true }))).toBe(true);
+    expect(phase.enabled(makeConfig({ update_records: false }))).toBe(false);
   });
 
   it('rebuilds records and returns the duplicate stats', async () => {
@@ -46,9 +22,9 @@ describe('RecordsPhase', () => {
     const progress = { emitProgress: vi.fn() } as ProgressSink;
 
     const result = await phase.run({
-      config: makeConfig(),
+      config: makeConfig({ update_records: true }),
       db: db as unknown as DbService,
-      reporter: makeReporter(),
+      reporter: asReporter(makeMockReporter()),
       progress,
       marker: '[3/3]',
       signal: new AbortController().signal,
@@ -76,9 +52,9 @@ describe('RecordsPhase', () => {
 
     await expect(
       new RecordsPhase().run({
-        config: makeConfig(),
+        config: makeConfig({ update_records: true }),
         db: db as unknown as DbService,
-        reporter: makeReporter(),
+        reporter: asReporter(makeMockReporter()),
         progress: { emitProgress: vi.fn() },
         marker: '[1/1]',
         signal: controller.signal,

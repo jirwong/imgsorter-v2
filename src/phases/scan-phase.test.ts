@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { ScanPhase } from './scan-phase';
 import { RunAbortedError } from './abort';
-import { makeMockReporter, makeMockProgress, asReporter, asProgress } from './test-helpers';
+import { makeConfig, makeMockReporter, makeMockProgress, asReporter, asProgress } from './test-helpers';
 import type { DbService } from '../services/db-service';
 import type { RunConfiguration } from '../types/configuration';
 
@@ -23,19 +23,6 @@ async function createFile(root: string, relativePath: string, content: string): 
   return fullPath;
 }
 
-function makeConfig(directory: string): RunConfiguration {
-  return {
-    dbName: 'test.db',
-    extensions: ['.txt'],
-    directories: [directory],
-    ignore_directories: [],
-    update_records: false,
-    process_directories: true,
-    resync_directories: false,
-    resync_check_actual_file: false,
-  };
-}
-
 describe('ScanPhase', () => {
   let rootDir: string;
 
@@ -49,8 +36,10 @@ describe('ScanPhase', () => {
 
   it('is enabled only when process_directories is true', () => {
     const phase = new ScanPhase();
-    expect(phase.enabled(makeConfig(join(rootDir, 'src')))).toBe(true);
-    expect(phase.enabled({ ...makeConfig(join(rootDir, 'src')), process_directories: false })).toBe(false);
+    expect(phase.enabled(makeConfig({ directories: [join(rootDir, 'src')] }))).toBe(true);
+    expect(phase.enabled({ ...makeConfig({ directories: [join(rootDir, 'src')] }), process_directories: false })).toBe(
+      false,
+    );
   });
 
   it('lists matching files, writes entries, and reports counters and events', async () => {
@@ -62,7 +51,7 @@ describe('ScanPhase', () => {
     const reporter = makeMockReporter();
 
     const result = await new ScanPhase().run({
-      config: makeConfig(join(rootDir, 'src')),
+      config: makeConfig({ directories: [join(rootDir, 'src')] }),
       db: db as unknown as DbService,
       reporter: asReporter(reporter),
       progress: asProgress(progress),
@@ -75,7 +64,7 @@ describe('ScanPhase', () => {
       throw new Error('expected a scan result');
     }
     expect(result.filesScanned).toBe(2);
-    expect(result.entriesUpserted).toBe(2);
+    expect(result.entriesWritten).toBe(2);
     expect(result.errors).toEqual([]);
     expect(db.insertFileEntries).toHaveBeenCalledTimes(1);
 
@@ -106,7 +95,7 @@ describe('ScanPhase', () => {
     await createFile(rootDir, 'src/a.txt', 'hello');
 
     const config: RunConfiguration = {
-      ...makeConfig(join(rootDir, 'src')),
+      ...makeConfig({ directories: [join(rootDir, 'src')] }),
       directories: [join(rootDir, 'missing'), join(rootDir, 'src')],
     };
     const reporter = makeMockReporter();
@@ -137,7 +126,7 @@ describe('ScanPhase', () => {
 
     await expect(
       new ScanPhase().run({
-        config: makeConfig(join(rootDir, 'src')),
+        config: makeConfig({ directories: [join(rootDir, 'src')] }),
         db: db as unknown as DbService,
         reporter: asReporter(makeMockReporter()),
         progress: asProgress(makeMockProgress()),
@@ -159,7 +148,7 @@ describe('ScanPhase', () => {
 
     await expect(
       new ScanPhase().run({
-        config: makeConfig(join(rootDir, 'src')),
+        config: makeConfig({ directories: [join(rootDir, 'src')] }),
         db: db as unknown as DbService,
         reporter: asReporter(makeMockReporter()),
         progress: asProgress(makeMockProgress()),

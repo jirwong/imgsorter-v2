@@ -110,7 +110,7 @@ describe('Runner', () => {
 
     expect(summary.phases.map((p) => p.name)).toEqual(['scan', 'records']);
     expect(summary.filesScanned).toBe(4);
-    expect(summary.entriesUpserted).toBe(4);
+    expect(summary.entriesWritten).toBe(4);
     expect(summary.duplicateGroups).toBe(1);
     expect(summary.duplicateFiles).toBe(1);
     expect(summary.staleRemoved).toBe(0);

@@ -6,7 +6,7 @@ export type RunSummary = {
   // Files matching the configured extensions encountered during the scan phase.
   filesScanned: number;
   // Rows inserted or updated in `entries` during the scan phase.
-  entriesUpserted: number;
+  entriesWritten: number;
   // Duplicate groups in `records`: rows with count > 1, i.e. the same filename,
   // size and hash verified in more than one directory. Files with identical
   // content but different names form separate groups and are not counted here.
