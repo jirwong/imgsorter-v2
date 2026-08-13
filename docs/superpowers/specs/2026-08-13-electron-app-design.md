@@ -210,6 +210,43 @@ thumbnail grids must be **virtualized** and thumbnails **lazily loaded**.
 copy lives, (2) identify which files are unique, (3) browse and inspect what the
 files are.
 
+### Data schema
+
+The app reads from a SQLite database (default `local.db`) with two tables. All
+screens render data sourced from these tables. Show the exact column values
+described here — do not invent fields.
+
+**Table `entries`** — one row per indexed file:
+
+| Column      | Type    | Nullable | Notes                                                                 |
+| ----------- | ------- | -------- | --------------------------------------------------------------------- |
+| `id`        | INTEGER | No       | Primary key, auto-increment                                           |
+| `size`      | INTEGER | Yes      | File size in bytes                                                    |
+| `directory` | TEXT    | Yes      | Parent directory of the file                                          |
+| `extension` | TEXT    | Yes      | File extension (e.g. `.jpg`)                                          |
+| `filename`  | TEXT    | Yes      | Base file name                                                        |
+| `birthtime` | TEXT    | Yes      | File creation time, ISO 8601 string                                   |
+| `hash`      | TEXT    | Yes      | SHA-256 hash of the first/last 16 KB; `NULL` when hashing is disabled |
+| `path`      | TEXT    | Yes      | Full file path; must be unique                                        |
+
+**Table `records`** — rebuilt summary grouping `entries` by filename, size, and
+hash; used to detect duplicates:
+
+| Column        | Type    | Nullable | Notes                                                    |
+| ------------- | ------- | -------- | -------------------------------------------------------- |
+| `id`          | INTEGER | No       | Primary key, auto-increment                              |
+| `filename`    | TEXT    | Yes      | Base file name                                           |
+| `hash`        | TEXT    | Yes      | Content hash                                             |
+| `count`       | INTEGER | Yes      | Number of `entries` rows in this group                   |
+| `directories` | TEXT    | Yes      | JSON array of directories containing files in this group |
+| `extension`   | TEXT    | Yes      | File extension (e.g. `.jpg`)                             |
+| `size`        | INTEGER | Yes      | File size in bytes                                       |
+
+A "duplicate group" is a `records` row with `count > 1` — the same filename,
+size, and hash verified in more than one directory. Note: the app's Duplicates
+screen additionally groups by content hash alone, so files with identical
+content but different names are also shown together.
+
 ### App layout (shared chrome)
 
 A three-region layout used by every screen:
